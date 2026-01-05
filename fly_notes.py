@@ -50,8 +50,10 @@ class TaskItem(tk.Frame):
         # Reordering support (Only for the item itself and label)
         self.label.bind("<Button-1>", self.start_drag)
         self.label.bind("<B1-Motion>", self.do_drag)
+        self.label.bind("<ButtonRelease-1>", self.stop_drag)
         self.bind("<Button-1>", self.start_drag)
         self.bind("<B1-Motion>", self.do_drag)
+        self.bind("<ButtonRelease-1>", self.stop_drag)
 
     def toggle_strike(self):
         if self.completed.get():
@@ -64,6 +66,9 @@ class TaskItem(tk.Frame):
 
     def do_drag(self, event):
         self.app.do_reorder(self, event)
+
+    def stop_drag(self, event):
+        self.app.stop_reorder(self, event)
 
     def set_bg(self, color):
         """Recursively update background of self and all sub-widgets."""
@@ -191,6 +196,12 @@ class FlyNotesApp:
         self.dragging_item = item
         item.set_bg(DRAG_HIGHLIGHT_COLOR) # Unified highlight
         self.drag_start_y = event.y_root
+
+    def stop_reorder(self, item, event):
+        if self.dragging_item:
+            self.dragging_item.set_bg(ITEM_BG)
+            self.dragging_item = None
+        self.update_canvas()
 
     def do_reorder(self, item, event):
         if not self.dragging_item: return
