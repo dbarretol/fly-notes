@@ -16,8 +16,9 @@ INACTIVE_ALPHA = 0.3       # Subtle enough not to obstruct
 # ----------------------------
 
 class TaskItem(tk.Frame):
-    def __init__(self, master, text, on_delete, **kwargs):
+    def __init__(self, master, app, text, on_delete, **kwargs):
         super().__init__(master, bg=ITEM_BG, **kwargs)
+        self.app = app
         self.text = text
         self.on_delete = on_delete
         self.completed = tk.BooleanVar(value=False)
@@ -58,10 +59,10 @@ class TaskItem(tk.Frame):
             self.label.config(font=self.label_font, fg=TEXT_COLOR)
 
     def start_drag(self, event):
-        self.master.master.master.start_reorder(self, event) # Path to FlyNotesApp
+        self.app.start_reorder(self, event)
 
     def do_drag(self, event):
-        self.master.master.master.do_reorder(self, event)
+        self.app.do_reorder(self, event)
 
 class FlyNotesApp:
     def __init__(self, root):
@@ -156,7 +157,7 @@ class FlyNotesApp:
     def add_task(self, event=None):
         text = self.task_entry.get().strip()
         if text:
-            item = TaskItem(self.scroll_frame, text, self.delete_task)
+            item = TaskItem(self.scroll_frame, self, text, self.delete_task)
             item.pack(fill="x", pady=2, padx=5)
             self.tasks.append(item)
             self.task_entry.delete(0, tk.END)
