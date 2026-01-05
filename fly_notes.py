@@ -13,6 +13,7 @@ BORDER_COLOR = "#DAA520"   # Goldenrod
 # Transparency (0.0 to 1.0)
 ACTIVE_ALPHA = 1.0
 INACTIVE_ALPHA = 0.3       # Subtle enough not to obstruct
+DRAG_HIGHLIGHT_COLOR = "#E9967A" # Dark Salmon (More subtle highlight)
 # ----------------------------
 
 class TaskItem(tk.Frame):
@@ -63,6 +64,13 @@ class TaskItem(tk.Frame):
 
     def do_drag(self, event):
         self.app.do_reorder(self, event)
+
+    def set_bg(self, color):
+        """Recursively update background of self and all sub-widgets."""
+        self.config(bg=color)
+        self.label.config(bg=color)
+        self.check.config(bg=color, activebackground=color)
+        self.delete_btn.config(bg=color, activebackground=color)
 
 class FlyNotesApp:
     def __init__(self, root):
@@ -181,7 +189,7 @@ class FlyNotesApp:
     # Reordering Logic
     def start_reorder(self, item, event):
         self.dragging_item = item
-        item.config(bg=BORDER_COLOR) # Highlight
+        item.set_bg(DRAG_HIGHLIGHT_COLOR) # Unified highlight
         self.drag_start_y = event.y_root
 
     def do_reorder(self, item, event):
@@ -202,13 +210,13 @@ class FlyNotesApp:
             self.drag_start_y = y
 
     def repack_tasks(self):
-        # Reset colors during repack to clear highlight
+        # Reset colors during repack to clear highlight or apply dragging highlight
         for t in self.tasks:
             t.pack_forget()
             if t == self.dragging_item:
-                t.config(bg=BORDER_COLOR)
+                t.set_bg(DRAG_HIGHLIGHT_COLOR)
             else:
-                t.config(bg=ITEM_BG)
+                t.set_bg(ITEM_BG)
         
         for t in self.tasks:
             t.pack(fill="x", pady=2, padx=5)
