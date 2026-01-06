@@ -1,95 +1,97 @@
-# Fly Notes 📝
+# Fly Notes
 
-A minimal, floating "widget-style" task manager for Windows 11. Designed to be lightweight and stay out of the way while keeping your tasks visible.
+A minimal, floating “widget-style” task manager built with Python + Tkinter. Optimized for Windows 11: stays on top, fades when inactive, and supports reliable minimize/restore using a taskbar proxy window.
 
-## Key Features
+## Features
 
-- **Floating Widget**: Stays on top of other windows.
-- **Dynamic Transparency**: 
-  - **100% Opaque** when you are interacting with it.
-  - **30% Transparency** when you click away, preventing it from obstructing your view.
-- **Customizable Orange Theme**: Features a strong orange title bar and pastel peach content area for high visibility and a modern look.
-- **Task Management**:
-  - **Quick Add**: Type and press Enter.
-  - **Strikethrough**: Mark tasks as completed with a single click.
-  - **Drag-and-Drop Reorder**: Effortlessly reorder tasks by dragging the task labels.
-  - **Delete individual tasks** or **Clear all completed tasks** at once.
-- **Header-Only Movement**: Drag the "Fly Notes" title bar to move the window.
-- **Standalone Executable**: No installation required. Runs as a single `.exe`.
+- **Floating & borderless widget** (always on top)
+- **Dynamic transparency**
+  - **100% opaque** when focused
+  - **30% transparent** when unfocused
+- **Task management**
+  - Add tasks quickly (**type + Enter**)
+  - Mark complete (**checkbox + strikethrough**)
+  - **Drag-and-drop reorder** (drag the task label)
+  - Delete tasks individually
+  - **Clear completed** tasks
+- **Header-only movement**: drag the orange header to move the window
+- **Manual resizing**: drag right/bottom edges or bottom-right corner
+- **Reliable minimize/restore on Windows 11**: implemented via a **Taskbar Proxy Window** strategy
 
-## How to Run
+## Screens / Demo
 
-### Standalone (Recommended)
-Simply run the executable located in `dist/FlyNotes.exe`.
+(Add a screenshot or GIF here)
 
-### From Source
-If you have Python installed, you can run it directly:
-1. Install dependencies:
-   ```bash
-   pip install pyinstaller
+## Requirements
+
+- **Windows 11** (primary supported experience)
+- **Python**: 3.12+ recommended (you’re currently using 3.13.x)
+- Tkinter is included with most Python installs on Windows.
+
+## Run
+
+### Option A: Run the standalone executable (recommended)
+Run:
+- `dist/FlyNotes.exe`
+
+No installation required.
+
+### Option B: Run from source
+1. (Optional) Create and activate a virtual environment:
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\activate
    ```
-2. Run the script:
-   ```bash
+
+2. Run:
+   ```powershell
    python fly_notes.py
    ```
 
-## Configuration
+> Note: You only need `pyinstaller` if you want to **build** the `.exe`.
 
-You can easily customize the appearance by editing the global variables at the top of `fly_notes.py`:
+## Configuration (Theme / Opacity)
+
+Edit the global constants at the top of `fly_notes.py`:
 
 ```python
-# --- GLOBAL CONFIGURATION ---
-HEADER_BG = "#FF8C00"      # Strong Orange
-CONTENT_BG = "#FFDAB9"     # Pastel Orange
+HEADER_BG = "#FF8C00"      # Title bar color
+CONTENT_BG = "#FFDAB9"     # Body background
+ITEM_BG = "#FFE4B5"        # Task row background
+
 ACTIVE_ALPHA = 1.0         # Opacity when focused
 INACTIVE_ALPHA = 0.3       # Opacity when unfocused
 ```
 
-## Building the Standalone Executable
+## Build (PyInstaller)
 
-The app is bundled using **PyInstaller**. This process creates a single `.exe` (Windows) or binary (Linux) that contains all necessary dependencies.
-
-### Windows (Primary Support)
-
-As this is a Windows 11 focused widget, the build process is most robust here.
-
-1. **Prerequisites**:
-   - Python 3.12+ installed.
-   - A virtual environment is recommended:
-     ```bash
-     python -m venv venv
-     .\venv\Scripts\activate
-     ```
-2. **Install Build Tools**:
-   ```bash
+### Windows
+1. Install PyInstaller:
+   ```powershell
    pip install pyinstaller
    ```
-3. **Build Command**:
-   ```bash
+
+2. Build:
+   ```powershell
    pyinstaller --onefile --noconsole --name FlyNotes fly_notes.py --clean
    ```
-   The result will be in the `dist/` folder.
 
-### Linux (Experimental)
+Output:
+- `dist/FlyNotes.exe`
 
-The app script (`fly_notes.py`) can run on Linux, but the "widget" experience (blur/transparency handling and window-over-all behavior) may vary depending on your desktop environment (GNOME, KDE, etc.).
+## Platform Notes / Limitations
 
-1. **Prerequisites**:
-   - Ensure `tkinter` is installed (often separate on Linux distributions):
-     ```bash
-     # Ubuntu/Debian
-     sudo apt-get install python3-tk
-     ```
-2. **Build Command**:
-   The same `pyinstaller` command applies. On Linux, this will generate a Linux ELF binary instead of an `.exe`.
+- The Windows `.exe` built by PyInstaller runs **only on Windows**.
+- Transparency and borderless behavior depend on the OS/window manager.
+- Linux/macOS may run the script, but the “widget-like” behavior (topmost, alpha, borderless, taskbar behavior) may differ.
 
-### Platform Limitations
-> [!IMPORTANT]
-> - **Windows Only**: The standalone `.exe` generated on Windows **only works on Windows**. You cannot run the `.exe` on Linux or macOS.
-> - **Visual Effects**: Specific features like `attributes("-alpha", ...)` and `overrideredirect(True)` are handled by the OS window manager. On Linux, some tiling window managers might ignore these settings.
+## Tech Stack
 
-## Technology
+- **Python**
+- **Tkinter** (built-in GUI toolkit)
+- **PyInstaller** (optional: packaging into a single executable)
+- **Windows integration**: taskbar proxy technique for consistent minimize/restore on borderless windows
 
-- **Language**: Python 3.x
-- **GUI Framework**: `tkinter` (Built-in, lightweight)
-- **Bundler**: `PyInstaller`
+## License
+
+MIT

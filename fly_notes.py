@@ -144,6 +144,8 @@ class FlyNotesApp:
         self.root.deiconify()
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
+        self.root.lift()
+        self.root.focus_force()
 
     def setup_ui(self):
         # Header / Dragging area (Window Title)
