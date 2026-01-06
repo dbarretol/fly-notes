@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import font as tkfont
+import ctypes
 
 # --- GLOBAL CONFIGURATION ---
 # Colors
@@ -91,11 +92,58 @@ class FlyNotesApp:
         self.offset_x = 0
         self.offset_y = 0
         
-        # Task reordering state
-        self.dragging_item = None
+        # Resizing state
+        self.is_resizing = False
+        self.resize_edge = None
+        
+        # Recursion guard for window state changes
+        self.lock_taskbar_update = False
+        self._was_minimized = False
         
         self.setup_ui()
         self.setup_bindings()
+        self.setup_resize_handles()
+        self.setup_taskbar_proxy()
+
+    def setup_taskbar_proxy(self):
+        # A normal decorated window that will represent us in the taskbar
+        self.proxy = tk.Toplevel(self.root)
+        self.proxy.title("Fly Notes")
+
+        # Keep it effectively invisible when shown/restored
+        self.proxy.geometry("1x1+-32000+-32000")  # far off-screen
+        self.proxy.resizable(False, False)
+
+        # If user closes from taskbar thumbnail, close the app
+        self.proxy.protocol("WM_DELETE_WINDOW", self.root.destroy)
+
+        # We'll use this to ignore programmatic deiconify during minimize
+        self._proxy_programmatic = False
+
+        # When user restores from taskbar, this window gets mapped/focused
+        self.proxy.bind("<Map>", self._proxy_restore_request)
+        self.proxy.bind("<FocusIn>", self._proxy_restore_request)
+
+        # Start with no taskbar icon
+        self.proxy.withdraw()
+
+    def _proxy_restore_request(self, event=None):
+        # Ignore the map/focus events we caused ourselves while minimizing
+        if getattr(self, "_proxy_programmatic", False):
+            return
+
+        if not self._was_minimized:
+            return
+
+        self._was_minimized = False
+
+        # Hide proxy => remove taskbar button again
+        self.proxy.withdraw()
+
+        # Restore real borderless window
+        self.root.deiconify()
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
 
     def setup_ui(self):
         # Header / Dragging area (Window Title)
@@ -115,6 +163,13 @@ class FlyNotesApp:
         )
         self.close_btn.pack(side="right", fill="y")
 
+        self.min_btn = tk.Button(
+            self.header, text="—", command=self.minimize_window,
+            bg=HEADER_BG, fg="white", bd=0, activebackground="#FF4500",
+            padx=10, font=("Segoe UI", 10, "bold")
+        )
+        self.min_btn.pack(side="right", fill="y")
+
         # Entry area
         self.entry_frame = tk.Frame(self.root, bg=CONTENT_BG, pady=10)
         self.entry_frame.pack(fill="x")
@@ -132,7 +187,9 @@ class FlyNotesApp:
         self.scroll_frame = tk.Frame(self.list_canvas, bg=CONTENT_BG)
         
         self.list_canvas.pack(fill="both", expand=True)
-        self.list_canvas.create_window((0,0), window=self.scroll_frame, anchor="nw", width=300)
+        self.canvas_window_id = self.list_canvas.create_window(
+            (0,0), window=self.scroll_frame, anchor="nw", width=300
+        )
         
         # Footer
         self.footer = tk.Frame(self.root, bg=CONTENT_BG, pady=5)
@@ -157,6 +214,70 @@ class FlyNotesApp:
         # Transparency on focus
         self.root.bind("<FocusIn>", lambda e: self.root.attributes("-alpha", ACTIVE_ALPHA))
         self.root.bind("<FocusOut>", lambda e: self.root.attributes("-alpha", INACTIVE_ALPHA))
+
+        # Re-apply borderless and topmost on restore (generic guard for OS events)
+        self.root.bind("<Map>", lambda e: self.root.attributes("-topmost", True))
+
+    def setup_resize_handles(self):
+        # Create thin invisible frames for resizing
+        self.resizer_r = tk.Frame(self.root, bg=CONTENT_BG, cursor="sb_h_double_arrow", width=5)
+        self.resizer_r.place(relx=1.0, rely=0.0, relheight=1.0, anchor="ne")
+        self.resizer_r.bind("<Button-1>", lambda e: self.start_resize("r", e))
+        self.resizer_r.bind("<B1-Motion>", self.do_resize)
+
+        self.resizer_b = tk.Frame(self.root, bg=CONTENT_BG, cursor="sb_v_double_arrow", height=5)
+        self.resizer_b.place(relx=0.0, rely=1.0, relwidth=1.0, anchor="sw")
+        self.resizer_b.bind("<Button-1>", lambda e: self.start_resize("b", e))
+        self.resizer_b.bind("<B1-Motion>", self.do_resize)
+
+        self.resizer_se = tk.Frame(self.root, bg=CONTENT_BG, cursor="size_nw_se", width=10, height=10)
+        self.resizer_se.place(relx=1.0, rely=1.0, anchor="se")
+        self.resizer_se.bind("<Button-1>", lambda e: self.start_resize("se", e))
+        self.resizer_se.bind("<B1-Motion>", self.do_resize)
+
+    def minimize_window(self):
+        self._was_minimized = True
+
+        # Hide the real UI window completely (don’t iconify it)
+        self.root.withdraw()
+
+        # Show a taskbar button via the proxy window, but keep it off-screen
+        self._proxy_programmatic = True
+        self.proxy.deiconify()
+        self.proxy.after_idle(self.proxy.iconify)
+
+        # Clear the flag shortly after iconify completes
+        self.proxy.after(200, lambda: setattr(self, "_proxy_programmatic", False))
+
+    def start_resize(self, edge, event):
+        self.is_resizing = True
+        self.resize_edge = edge
+        self.start_x = event.x_root
+        self.start_y = event.y_root
+        self.start_w = self.root.winfo_width()
+        self.start_h = self.root.winfo_height()
+
+    def do_resize(self, event):
+        if not self.is_resizing: return
+        
+        dx = event.x_root - self.start_x
+        dy = event.y_root - self.start_y
+        
+        new_w = self.start_w
+        new_h = self.start_h
+
+        if "r" in self.resize_edge:
+            new_w = max(200, self.start_w + dx)
+        if "b" in self.resize_edge:
+            new_h = max(150, self.start_h + dy)
+        if "se" == self.resize_edge:
+            new_w = max(200, self.start_w + dx)
+            new_h = max(150, self.start_h + dy)
+
+        self.root.geometry(f"{new_w}x{new_h}")
+        # Use itemconfigure instead of create_window to avoid memory leak
+        self.list_canvas.itemconfigure(self.canvas_window_id, width=new_w)
+        self.update_canvas()
 
     def start_move(self, event):
         self.offset_x = event.x
