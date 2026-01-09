@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import font as tkfont
 import ctypes
+import json
+import os
 
 # --- GLOBAL CONFIGURATION ---
 # Colors
@@ -61,6 +63,7 @@ class TaskItem(tk.Frame):
             self.label.config(font=self.strike_font, fg=STRIKE_COLOR)
         else:
             self.label.config(font=self.label_font, fg=TEXT_COLOR)
+        self.app.save_tasks() # Save on status change
 
     def start_drag(self, event):
         self.app.start_reorder(self, event)
@@ -104,6 +107,9 @@ class FlyNotesApp:
         self.setup_bindings()
         self.setup_resize_handles()
         self.setup_taskbar_proxy()
+        
+        self.tasks_file = "tasks.json"
+        self.load_tasks()
 
     def setup_taskbar_proxy(self):
         # A normal decorated window that will represent us in the taskbar
@@ -290,25 +296,55 @@ class FlyNotesApp:
         y = self.root.winfo_y() + event.y - self.offset_y
         self.root.geometry(f"+{x}+{y}")
 
-    def add_task(self, event=None):
-        text = self.task_entry.get().strip()
+    def add_task(self, event=None, task_text=None, completed=False):
+        text = task_text if task_text else self.task_entry.get().strip()
         if text:
             item = TaskItem(self.scroll_frame, self, text, self.delete_task)
+            item.completed.set(completed)
+            item.toggle_strike() # Apply initial strike if needed
             item.pack(fill="x", pady=2, padx=5)
             self.tasks.append(item)
-            self.task_entry.delete(0, tk.END)
+            if not task_text:
+                self.task_entry.delete(0, tk.END)
+                self.save_tasks() # Save on new task
             self.update_canvas()
 
     def delete_task(self, item):
         item.destroy()
         if item in self.tasks:
             self.tasks.remove(item)
+        self.save_tasks() # Save on deletion
         self.update_canvas()
 
     def clear_completed(self):
         to_delete = [t for t in self.tasks if t.completed.get()]
-        for t in to_delete:
-            self.delete_task(t)
+        if to_delete:
+            for t in to_delete:
+                self.delete_task(t)
+            # delete_task already calls save_tasks
+
+    def save_tasks(self):
+        task_data = []
+        for t in self.tasks:
+            task_data.append({
+                "text": t.text,
+                "completed": t.completed.get()
+            })
+        try:
+            with open(self.tasks_file, "w") as f:
+                json.dump(task_data, f)
+        except Exception as e:
+            print(f"Error saving tasks: {e}")
+
+    def load_tasks(self):
+        if os.path.exists(self.tasks_file):
+            try:
+                with open(self.tasks_file, "r") as f:
+                    task_data = json.load(f)
+                    for data in task_data:
+                        self.add_task(task_text=data["text"], completed=data["completed"])
+            except Exception as e:
+                print(f"Error loading tasks: {e}")
 
     def update_canvas(self):
         self.scroll_frame.update_idletasks()
@@ -324,6 +360,7 @@ class FlyNotesApp:
         if self.dragging_item:
             self.dragging_item.set_bg(ITEM_BG)
             self.dragging_item = None
+            self.save_tasks() # Save order after drag
         self.update_canvas()
 
     def do_reorder(self, item, event):
