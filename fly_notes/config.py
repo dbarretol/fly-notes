@@ -20,6 +20,12 @@ DEFAULT_CONFIG = {
         "tasks_file": "tasks.json",
         "default_width": 300,
         "default_height": 400
+    },
+    "fonts": {
+        "header": ["Segoe UI", 10, "bold"],
+        "body": ["Segoe UI", 11],
+        "body_strike": ["Segoe UI", 11, "overstrike"],
+        "footer": ["Segoe UI", 8, "bold"]
     }
 }
 
@@ -71,6 +77,14 @@ class Config:
     def default_width(self): return self.data["settings"]["default_width"]
     @property
     def default_height(self): return self.data["settings"]["default_height"]
+    @property
+    def font_header(self): return tuple(self.data["fonts"]["header"])
+    @property
+    def font_body(self): return tuple(self.data["fonts"]["body"])
+    @property
+    def font_body_strike(self): return tuple(self.data["fonts"]["body_strike"])
+    @property
+    def font_footer(self): return tuple(self.data["fonts"]["footer"])
 
 # Global config instance
 config = Config()
