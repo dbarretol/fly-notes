@@ -151,20 +151,24 @@ class FlyNotesApp:
 
     def setup_resize_handles(self) -> None:
         """Creates invisible frames for window resizing interaction."""
-        self.resizer_r = tk.Frame(self.root, bg=config.content_bg, cursor="sb_h_double_arrow", width=5)
-        self.resizer_r.place(relx=1.0, rely=0.0, relheight=1.0, anchor="ne")
-        self.resizer_r.bind("<Button-1>", lambda e: self.start_resize("r", e))
-        self.resizer_r.bind("<B1-Motion>", self.do_resize)
+        self._create_resizer("r", 1.0, 0.0, 1.0, "ne", "sb_h_double_arrow", width=5)
+        self._create_resizer("b", 0.0, 1.0, 1.0, "sw", "sb_v_double_arrow", height=5)
+        self._create_resizer("se", 1.0, 1.0, None, "se", "size_nw_se", width=10, height=10)
 
-        self.resizer_b = tk.Frame(self.root, bg=config.content_bg, cursor="sb_v_double_arrow", height=5)
-        self.resizer_b.place(relx=0.0, rely=1.0, relwidth=1.0, anchor="sw")
-        self.resizer_b.bind("<Button-1>", lambda e: self.start_resize("b", e))
-        self.resizer_b.bind("<B1-Motion>", self.do_resize)
-
-        self.resizer_se = tk.Frame(self.root, bg=config.content_bg, cursor="size_nw_se", width=10, height=10)
-        self.resizer_se.place(relx=1.0, rely=1.0, anchor="se")
-        self.resizer_se.bind("<Button-1>", lambda e: self.start_resize("se", e))
-        self.resizer_se.bind("<B1-Motion>", self.do_resize)
+    def _create_resizer(self, edge: str, relx: float, rely: float, relsize: Optional[float], anchor: str, cursor: str, **kwargs) -> None:
+        """Helper to create and place a resize handle frame."""
+        resizer = tk.Frame(self.root, bg=config.content_bg, cursor=cursor, **kwargs)
+        if "r" in edge and relsize:
+            resizer.place(relx=relx, rely=rely, relheight=relsize, anchor=anchor)
+        elif "b" in edge and relsize:
+            resizer.place(relx=relx, rely=rely, relwidth=relsize, anchor=anchor)
+        else:
+            resizer.place(relx=relx, rely=rely, anchor=anchor)
+        
+        resizer.bind("<Button-1>", lambda e: self.start_resize(edge, e))
+        resizer.bind("<B1-Motion>", self.do_resize)
+        # Store reference to prevent garbage collection if needed (though place() keeps it alive in this case)
+        setattr(self, f"resizer_{edge}", resizer)
 
     def minimize_window(self) -> None:
         """Withdraws the main window and shows it in the taskbar via the proxy."""
