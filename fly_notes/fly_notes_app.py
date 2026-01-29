@@ -1,14 +1,10 @@
 import tkinter as tk
 from tkinter import messagebox
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from .config import config
 from .task_manager import TaskManager
 from .task_item import TaskItem
-
-# Constants for internal logic thresholds
-DRAG_THRESHOLD_PX = 20
-MIN_WINDOW_WIDTH = 200
-MIN_WINDOW_HEIGHT = 150
+from .window_controller import WindowController
 
 class FlyNotesApp:
     """
@@ -17,12 +13,7 @@ class FlyNotesApp:
     """
     
     def __init__(self, root: tk.Tk):
-        """
-        Initializes the application window and components.
-        
-        Args:
-            root: The Tkinter root window instance.
-        """
+        """Initializes the application window and components."""
         self.root = root
         self.root.title("Fly Notes")
         self.root.geometry(f"{config.default_width}x{config.default_height}+100+100")
@@ -36,49 +27,23 @@ class FlyNotesApp:
             tasks_file=config.tasks_file,
             error_callback=self.handle_error
         )
+        self.window_ctrl = WindowController(self.root, on_resize_callback=self.on_window_resize)
         
         # State
-        self.offset_x: int = 0
-        self.offset_y: int = 0
-        self.is_resizing: bool = False
-        self.resize_edge: Optional[str] = None
         self.dragging_item: Optional[TaskItem] = None
         self.drag_start_y: int = 0
-        self._was_minimized: bool = False
-        self._proxy_programmatic: bool = False
-        
         self.tasks_ui: List[TaskItem] = []
         
         self.setup_ui()
         self.setup_bindings()
-        self.setup_resize_handles()
-        self.setup_taskbar_proxy()
+        self.window_ctrl.setup_resize_handles(config.content_bg)
         self.load_initial_tasks()
 
-    def setup_taskbar_proxy(self) -> None:
-        """Creates a hidden proxy window to enable taskbar presence for the borderless main window."""
-        self.proxy = tk.Toplevel(self.root)
-        self.proxy.title("Fly Notes")
-        self.proxy.geometry("1x1+-32000+-32000")
-        self.proxy.resizable(False, False)
-        self.proxy.protocol("WM_DELETE_WINDOW", self.root.destroy)
-        self.proxy.bind("<Map>", self._proxy_restore_request)
-        self.proxy.bind("<FocusIn>", self._proxy_restore_request)
-        self.proxy.withdraw()
-
-    def _proxy_restore_request(self, event: Optional[tk.Event] = None) -> None:
-        """Handles restoration from the taskbar proxy."""
-        if self._proxy_programmatic:
-            return
-        if not self._was_minimized:
-            return
-        self._was_minimized = False
-        self.proxy.withdraw()
-        self.root.deiconify()
-        self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
-        self.root.lift()
-        self.root.focus_force()
+    def on_window_resize(self) -> None:
+        """Handles canvas adjustment when the window resize is triggered."""
+        new_w = self.root.winfo_width()
+        self.list_canvas.itemconfigure(self.canvas_window_id, width=new_w)
+        self.update_canvas()
 
     def setup_ui(self) -> None:
         """Builds the main UI layout fragments."""
@@ -100,7 +65,7 @@ class FlyNotesApp:
         self.close_btn.pack(side="right", fill="y")
 
         self.min_btn = tk.Button(
-            self.header, text="—", command=self.minimize_window,
+            self.header, text="—", command=self.window_ctrl.minimize_window,
             bg=config.header_bg, fg="white", bd=0, activebackground="#FF4500",
             padx=10, font=config.font_header
         )
@@ -140,97 +105,46 @@ class FlyNotesApp:
 
     def setup_bindings(self) -> None:
         """Sets up window-level event bindings."""
-        self.header.bind("<Button-1>", self.start_move)
-        self.header.bind("<B1-Motion>", self.do_move)
-        self.title_label.bind("<Button-1>", self.start_move)
-        self.title_label.bind("<B1-Motion>", self.do_move)
+        self.window_ctrl.bind_drag(self.header)
+        self.window_ctrl.bind_drag(self.title_label)
         
         self.root.bind("<FocusIn>", lambda e: self.root.attributes("-alpha", config.active_alpha))
         self.root.bind("<FocusOut>", lambda e: self.root.attributes("-alpha", config.inactive_alpha))
         self.root.bind("<Map>", lambda e: self.root.attributes("-topmost", True))
 
-    def setup_resize_handles(self) -> None:
-        """Creates invisible frames for window resizing interaction."""
-        self._create_resizer("r", 1.0, 0.0, 1.0, "ne", "sb_h_double_arrow", width=5)
-        self._create_resizer("b", 0.0, 1.0, 1.0, "sw", "sb_v_double_arrow", height=5)
-        self._create_resizer("se", 1.0, 1.0, None, "se", "size_nw_se", width=10, height=10)
-
-    def _create_resizer(self, edge: str, relx: float, rely: float, relsize: Optional[float], anchor: str, cursor: str, **kwargs) -> None:
-        """Helper to create and place a resize handle frame."""
-        resizer = tk.Frame(self.root, bg=config.content_bg, cursor=cursor, **kwargs)
-        if "r" in edge and relsize:
-            resizer.place(relx=relx, rely=rely, relheight=relsize, anchor=anchor)
-        elif "b" in edge and relsize:
-            resizer.place(relx=relx, rely=rely, relwidth=relsize, anchor=anchor)
-        else:
-            resizer.place(relx=relx, rely=rely, anchor=anchor)
-        
-        resizer.bind("<Button-1>", lambda e: self.start_resize(edge, e))
-        resizer.bind("<B1-Motion>", self.do_resize)
-        # Store reference to prevent garbage collection if needed (though place() keeps it alive in this case)
-        setattr(self, f"resizer_{edge}", resizer)
-
-    def minimize_window(self) -> None:
-        """Withdraws the main window and shows it in the taskbar via the proxy."""
-        self._was_minimized = True
-        self.root.withdraw()
-        self._proxy_programmatic = True
-        self.proxy.deiconify()
-        self.proxy.after_idle(self.proxy.iconify)
-        self.proxy.after(200, lambda: setattr(self, "_proxy_programmatic", False))
-
-    def start_resize(self, edge: str, event: tk.Event) -> None:
-        """Caches state for the start of a resize operation."""
-        self.is_resizing = True
-        self.resize_edge = edge
-        self.start_x = event.x_root
-        self.start_y = event.y_root
-        self.start_w = self.root.winfo_width()
-        self.start_h = self.root.winfo_height()
-
-    def do_resize(self, event: tk.Event) -> None:
-        """Handles active resizing mouse motion."""
-        if not self.is_resizing: return
-        dx = event.x_root - self.start_x
-        dy = event.y_root - self.start_y
-        new_w = self.start_w
-        new_h = self.start_h
-        if "r" in self.resize_edge:
-            new_w = max(MIN_WINDOW_WIDTH, self.start_w + dx)
-        if "b" in self.resize_edge:
-            new_h = max(MIN_WINDOW_HEIGHT, self.start_h + dy)
-        if "se" == self.resize_edge:
-            new_w = max(MIN_WINDOW_WIDTH, self.start_w + dx)
-            new_h = max(MIN_WINDOW_HEIGHT, self.start_h + dy)
-        self.root.geometry(f"{new_w}x{new_h}")
-        self.list_canvas.itemconfigure(self.canvas_window_id, width=new_w)
-        self.update_canvas()
-
-    def start_move(self, event: tk.Event) -> None:
-        """Caches offset for window movement."""
-        self.offset_x = event.x
-        self.offset_y = event.y
-
-    def do_move(self, event: tk.Event) -> None:
-        """Handles active window dragging."""
-        x = self.root.winfo_x() + event.x - self.offset_x
-        y = self.root.winfo_y() + event.y - self.offset_y
-        self.root.geometry(f"+{x}+{y}")
-
     def add_new_task(self) -> None:
-        """Adds a new task from the entry field."""
+        """Adds a new task using granular UI update."""
         text = self.task_entry.get().strip()
         if text:
-            self.manager.add_task(text)
+            task = self.manager.add_task(text)
             self.task_entry.delete(0, tk.END)
-            self.refresh_list()
+            self._create_task_widget(task)
+            self.update_canvas()
+
+    def _create_task_widget(self, task: Dict[str, Any]) -> TaskItem:
+        """Helper to instantiate and pack a single task widget."""
+        ui_item = TaskItem(
+            self.scroll_frame,
+            text=task["text"],
+            completed=task["completed"],
+            on_status_change=self.toggle_task,
+            on_delete=self.delete_task,
+            on_drag_start=self.start_reorder,
+            on_drag_do=self.do_reorder,
+            on_drag_stop=self.stop_reorder
+        )
+        ui_item.pack(fill="x", pady=2, padx=5)
+        self.tasks_ui.append(ui_item)
+        return ui_item
 
     def delete_task(self, ui_item: TaskItem) -> None:
-        """Removes a task from the list."""
+        """Removes a specific task widget and updates data layer."""
         try:
             idx = self.tasks_ui.index(ui_item)
             self.manager.delete_task(idx)
-            self.refresh_list()
+            self.tasks_ui.pop(idx)
+            ui_item.destroy()
+            self.update_canvas()
         except ValueError:
             pass
 
@@ -243,35 +157,27 @@ class FlyNotesApp:
             pass
 
     def clear_completed(self) -> None:
-        """Asks the manager to clear all completed tasks and updates the UI."""
+        """Removes completed tasks from UI and manager."""
         self.manager.clear_completed()
-        self.refresh_list()
+        # Filter UI items that are completed
+        to_remove = [item for item in self.tasks_ui if item.completed_var.get()]
+        for item in to_remove:
+            self.tasks_ui.remove(item)
+            item.destroy()
+        self.update_canvas()
 
     def load_initial_tasks(self) -> None:
         """Initial task load on startup."""
-        self.refresh_list()
+        for task in self.manager.tasks:
+            self._create_task_widget(task)
+        self.update_canvas()
 
     def refresh_list(self) -> None:
-        """Clears and rebuilds the entire task list UI from stored state."""
+        """Full rebuild (rarely used now, kept for fallback)."""
         for item in self.tasks_ui:
             item.destroy()
         self.tasks_ui = []
-        
-        for task in self.manager.tasks:
-            ui_item = TaskItem(
-                self.scroll_frame,
-                text=task["text"],
-                completed=task["completed"],
-                on_status_change=self.toggle_task,
-                on_delete=self.delete_task,
-                on_drag_start=self.start_reorder,
-                on_drag_do=self.do_reorder,
-                on_drag_stop=self.stop_reorder
-            )
-            ui_item.pack(fill="x", pady=2, padx=5)
-            self.tasks_ui.append(ui_item)
-        
-        self.update_canvas()
+        self.load_initial_tasks()
 
     def update_canvas(self) -> None:
         """Updates the scroll region of the list canvas."""
@@ -310,13 +216,13 @@ class FlyNotesApp:
         y = event.y_root
         try:
             idx = self.tasks_ui.index(item)
-            if y < self.drag_start_y - DRAG_THRESHOLD_PX and idx > 0:
+            if y < self.drag_start_y - config.drag_threshold and idx > 0:
                 # Move Up
                 if self.manager.reorder_tasks(idx, idx-1):
                     self.tasks_ui[idx], self.tasks_ui[idx-1] = self.tasks_ui[idx-1], self.tasks_ui[idx]
                     self.repack_tasks()
                     self.drag_start_y = y
-            elif y > self.drag_start_y + DRAG_THRESHOLD_PX and idx < len(self.tasks_ui) - 1:
+            elif y > self.drag_start_y + config.drag_threshold and idx < len(self.tasks_ui) - 1:
                 # Move Down
                 if self.manager.reorder_tasks(idx, idx+1):
                     self.tasks_ui[idx], self.tasks_ui[idx+1] = self.tasks_ui[idx+1], self.tasks_ui[idx]

@@ -19,7 +19,10 @@ DEFAULT_CONFIG = {
     "settings": {
         "tasks_file": "tasks.json",
         "default_width": 300,
-        "default_height": 400
+        "default_height": 400,
+        "drag_threshold": 20,
+        "min_width": 200,
+        "min_height": 150
     },
     "fonts": {
         "header": ["Segoe UI", 10, "bold"],
@@ -77,6 +80,12 @@ class Config:
     def default_width(self): return self.data["settings"]["default_width"]
     @property
     def default_height(self): return self.data["settings"]["default_height"]
+    @property
+    def drag_threshold(self): return self.data["settings"].get("drag_threshold", 20)
+    @property
+    def min_width(self): return self.data["settings"].get("min_width", 200)
+    @property
+    def min_height(self): return self.data["settings"].get("min_height", 150)
     @property
     def font_header(self): return tuple(self.data["fonts"]["header"])
     @property
