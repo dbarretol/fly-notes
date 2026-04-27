@@ -1,148 +1,190 @@
-import json
-import os
-import logging
-from typing import List, Dict, Optional, Callable, Any
+"""
+Data layer for task CRUD operations with debounced, atomic persistence.
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+Design decisions
+────────────────
+* Each task carries a UUID so the UI can reference it without relying on
+  fragile list‑index equality.
+* ``save_tasks`` writes to a temporary file first, then does an atomic
+  ``os.replace`` to avoid corruption on crashes.
+* Saves are **debounced** (default 500 ms) so rapid drag‑reorders don't
+  hammer the disk.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import tempfile
+import threading
+import uuid
+from typing import Any, Callable, Dict, List, Optional
+
 logger = logging.getLogger(__name__)
 
-class TaskManager:
-    """
-    Manages the lifecycle of tasks, including persistence to a JSON file.
-    
-    Attributes:
-        tasks_file (str): Path to the JSON file where tasks are stored.
-        error_callback (Callable[[str], None]): Callback for reporting errors to the UI.
-        _tasks (List[Dict[str, Any]]): Internal list of task objects.
-    """
+# Type alias for a single task record
+Task = Dict[str, Any]
 
-    def __init__(self, tasks_file: str = "tasks.json", error_callback: Optional[Callable[[str], None]] = None):
-        """
-        Initializes the TaskManager and loads tasks from the specified file.
-        
-        Args:
-            tasks_file: Path to the storage file.
-            error_callback: Optional function to call when an error occurs.
-        """
-        self.tasks_file: str = tasks_file
-        self.error_callback: Optional[Callable[[str], None]] = error_callback
-        self._tasks: List[Dict[str, Any]] = []
-        self.load_tasks()
+
+class TaskManager:
+    """Manages task lifecycle and JSON persistence."""
+
+    SAVE_DELAY: float = 0.5  # seconds — debounce window
+
+    def __init__(
+        self,
+        tasks_file: str = "tasks.json",
+        error_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        self.tasks_file = tasks_file
+        self.error_callback = error_callback
+        self._tasks: List[Task] = []
+        self._save_timer: Optional[threading.Timer] = None
+        self._lock = threading.Lock()
+        self._load_tasks()
+
+    # ── Public read‑only access ──────────────
 
     @property
-    def tasks(self) -> List[Dict[str, Any]]:
-        """
-        Returns a copy of the task list to prevent direct external mutation.
-        The TaskManager remains the single source of truth.
-        """
+    def tasks(self) -> List[Task]:
+        """Shallow copy — callers may read but must not mutate."""
         return list(self._tasks)
 
-    def add_task(self, text: str, completed: bool = False) -> Dict[str, Any]:
-        """
-        Adds a new task to the list and saves.
-        
-        Args:
-            text: The content of the task.
-            completed: Initial completion status.
-            
-        Returns:
-            The created task dictionary.
-        """
-        task = {"text": text, "completed": completed}
+    def task_by_id(self, task_id: str) -> Optional[Task]:
+        """Look up a task by its unique id."""
+        for t in self._tasks:
+            if t["id"] == task_id:
+                return t
+        return None
+
+    def index_of(self, task_id: str) -> int:
+        """Return the index of *task_id*, or raise ``ValueError``."""
+        for i, t in enumerate(self._tasks):
+            if t["id"] == task_id:
+                return i
+        raise ValueError(f"Task id '{task_id}' not found")
+
+    # ── CRUD operations ──────────────────────
+
+    def add_task(self, text: str, completed: bool = False) -> Task:
+        task: Task = {
+            "id": uuid.uuid4().hex,
+            "text": text,
+            "completed": completed,
+        }
         self._tasks.append(task)
-        self.save_tasks()
-        logger.info(f"Task added: {text}")
+        self._schedule_save()
+        logger.info("Task added: %s (id=%s)", text, task["id"])
         return task
 
-    def delete_task(self, index: int) -> Optional[Dict[str, Any]]:
-        """
-        Removes a task at the specified index.
-        
-        Args:
-            index: The 0-based index of the task to remove.
-            
-        Returns:
-            The removed task dictionary, or None if index is out of bounds.
-        """
-        if 0 <= index < len(self._tasks):
-            removed = self._tasks.pop(index)
-            self.save_tasks()
-            logger.info(f"Task deleted at index {index}")
-            return removed
-        logger.warning(f"Attempted to delete task at out-of-bounds index {index}")
-        return None
-
-    def toggle_task(self, index: int) -> Optional[Dict[str, Any]]:
-        """
-        Toggles the completion status of a task.
-        
-        Args:
-            index: The index of the task to toggle.
-            
-        Returns:
-            The updated task dictionary, or None if index is out of bounds.
-        """
-        if 0 <= index < len(self._tasks):
-            self._tasks[index]["completed"] = not self._tasks[index]["completed"]
-            self.save_tasks()
-            logger.info(f"Task toggled at index {index}: {self._tasks[index]['completed']}")
-            return self._tasks[index]
-        return None
-
-    def reorder_tasks(self, old_index: int, new_index: int) -> bool:
-        """
-        Moves a task from one position to another.
-        
-        Args:
-            old_index: Current index.
-            new_index: Target index.
-            
-        Returns:
-            True if successful, False otherwise.
-        """
-        if 0 <= old_index < len(self._tasks) and 0 <= new_index < len(self._tasks):
-            task = self._tasks.pop(old_index)
-            self._tasks.insert(new_index, task)
-            self.save_tasks()
-            logger.info(f"Task reordered from {old_index} to {new_index}")
-            return True
-        return False
-
-    def clear_completed(self) -> None:
-        """Removes all tasks marked as completed."""
-        initial_count = len(self._tasks)
-        self._tasks = [t for t in self._tasks if not t["completed"]]
-        self.save_tasks()
-        logger.info(f"Cleared {initial_count - len(self._tasks)} completed tasks")
-
-    def save_tasks(self) -> None:
-        """Persists the current task list to the JSON file."""
+    def delete_task(self, task_id: str) -> Optional[Task]:
         try:
-            with open(self.tasks_file, "w") as f:
-                json.dump(self._tasks, f)
-        except Exception as e:
-            msg = f"Error saving tasks: {e}"
+            idx = self.index_of(task_id)
+        except ValueError:
+            logger.warning("delete_task: id '%s' not found", task_id)
+            return None
+        removed = self._tasks.pop(idx)
+        self._schedule_save()
+        logger.info("Task deleted: %s", task_id)
+        return removed
+
+    def toggle_task(self, task_id: str) -> Optional[Task]:
+        try:
+            idx = self.index_of(task_id)
+        except ValueError:
+            return None
+        self._tasks[idx]["completed"] = not self._tasks[idx]["completed"]
+        self._schedule_save()
+        logger.info(
+            "Task toggled: %s → %s", task_id, self._tasks[idx]["completed"]
+        )
+        return self._tasks[idx]
+
+    def reorder_tasks(self, old_idx: int, new_idx: int) -> bool:
+        if not (0 <= old_idx < len(self._tasks) and 0 <= new_idx < len(self._tasks)):
+            return False
+        task = self._tasks.pop(old_idx)
+        self._tasks.insert(new_idx, task)
+        self._schedule_save()
+        logger.info("Reordered %d → %d", old_idx, new_idx)
+        return True
+
+    def clear_completed(self) -> int:
+        """Remove completed tasks. Returns how many were removed."""
+        before = len(self._tasks)
+        self._tasks = [t for t in self._tasks if not t["completed"]]
+        removed = before - len(self._tasks)
+        self._schedule_save()
+        logger.info("Cleared %d completed task(s)", removed)
+        return removed
+
+    # ── Persistence ──────────────────────────
+
+    def _schedule_save(self) -> None:
+        """Debounced save — coalesces rapid writes."""
+        with self._lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+            self._save_timer = threading.Timer(self.SAVE_DELAY, self._do_save)
+            self._save_timer.daemon = True
+            self._save_timer.start()
+
+    def flush(self) -> None:
+        """Force an immediate save (e.g. on app shutdown)."""
+        with self._lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+                self._save_timer = None
+        self._do_save()
+
+    def _do_save(self) -> None:
+        """Atomic write: tmp file → os.replace → target."""
+        try:
+            dir_name = os.path.dirname(self.tasks_file) or "."
+            fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(self._tasks, fh, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, self.tasks_file)
+            except BaseException:
+                # Clean up the temp file on failure
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except Exception as exc:
+            msg = f"Error saving tasks: {exc}"
             logger.error(msg, exc_info=True)
             if self.error_callback:
                 self.error_callback(msg)
 
-    def load_tasks(self) -> None:
-        """Loads tasks from the storage file if it exists."""
-        if os.path.exists(self.tasks_file):
-            try:
-                with open(self.tasks_file, "r") as f:
-                    self._tasks = json.load(f)
-                logger.info(f"Loaded {len(self._tasks)} tasks from {self.tasks_file}")
-            except Exception as e:
-                msg = f"Error loading tasks: {e}"
-                logger.error(msg, exc_info=True)
-                if self.error_callback:
-                    self.error_callback(msg)
-                self._tasks = []
-        else:
-            logger.info(f"No tasks file found at {self.tasks_file}, starting fresh")
+    def _load_tasks(self) -> None:
+        if not os.path.exists(self.tasks_file):
+            logger.info("No tasks file at %s — starting fresh", self.tasks_file)
+            return
+        try:
+            with open(self.tasks_file, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if not isinstance(data, list):
+                raise TypeError(f"Expected list, got {type(data).__name__}")
+            self._tasks = [self._sanitise_task(t) for t in data]
+            logger.info("Loaded %d task(s) from %s", len(self._tasks), self.tasks_file)
+        except Exception as exc:
+            msg = f"Error loading tasks: {exc}"
+            logger.error(msg, exc_info=True)
+            if self.error_callback:
+                self.error_callback(msg)
             self._tasks = []
+
+    @staticmethod
+    def _sanitise_task(raw: Any) -> Task:
+        """Ensure every task dict has the required keys."""
+        if not isinstance(raw, dict):
+            raise TypeError(f"Task must be a dict, got {type(raw).__name__}")
+        return {
+            "id": raw.get("id") or uuid.uuid4().hex,
+            "text": str(raw.get("text", "")),
+            "completed": bool(raw.get("completed", False)),
+        }

@@ -1,232 +1,319 @@
+"""
+Main application orchestrator — wires together UI, data and window management.
+
+Key improvements over the original
+───────────────────────────────────
+* Tasks are referenced by **UUID**, not parallel‑list index.
+* Mouse‑wheel scrolling on the canvas.
+* ``flush()`` called on shutdown to avoid data loss from debounce.
+* Input length is capped via ``config.max_task_length``.
+"""
+
+from __future__ import annotations
+
 import tkinter as tk
 from tkinter import messagebox
-from typing import List, Optional, Any, Dict
+from typing import Any, Dict, List, Optional
+
 from .config import config
-from .task_manager import TaskManager
 from .task_item import TaskItem
+from .task_manager import TaskManager
 from .window_controller import WindowController
 
+
 class FlyNotesApp:
-    """
-    Main application class for Fly Notes. 
-    Orchestrates UI components and data management.
-    """
-    
-    def __init__(self, root: tk.Tk):
-        """Initializes the application window and components."""
+    """Top‑level controller for the Fly Notes application."""
+
+    def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Fly Notes")
-        self.root.geometry(f"{config.default_width}x{config.default_height}+100+100")
-        self.root.overrideredirect(True) # Borderless
-        self.root.attributes("-topmost", True) # Floating
+        self.root.geometry(
+            f"{config.default_width}x{config.default_height}+100+100"
+        )
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
         self.root.config(bg=config.content_bg)
         self.root.attributes("-alpha", config.active_alpha)
-        
-        # Managers
+
+        # Data layer
         self.manager = TaskManager(
             tasks_file=config.tasks_file,
-            error_callback=self.handle_error
+            error_callback=self._handle_error,
         )
-        self.window_ctrl = WindowController(self.root, on_resize_callback=self.on_window_resize)
-        
-        # State
-        self.dragging_item: Optional[TaskItem] = None
-        self.drag_start_y: int = 0
-        self.tasks_ui: List[TaskItem] = []
-        
-        self.setup_ui()
-        self.setup_bindings()
+
+        # Window behaviour
+        self.window_ctrl = WindowController(
+            self.root, on_resize_callback=self._on_window_resize
+        )
+
+        # Drag‑reorder state
+        self._dragging_item: Optional[TaskItem] = None
+        self._drag_start_y: int = 0
+
+        # Ordered list of visible task widgets
+        self._task_widgets: List[TaskItem] = []
+
+        self._build_ui()
+        self._bind_events()
         self.window_ctrl.setup_resize_handles(config.content_bg)
-        self.load_initial_tasks()
+        self._load_initial_tasks()
 
-    def on_window_resize(self) -> None:
-        """Handles canvas adjustment when the window resize is triggered."""
-        new_w = self.root.winfo_width()
-        self.list_canvas.itemconfigure(self.canvas_window_id, width=new_w)
-        self.update_canvas()
+        # Ensure pending saves are flushed on exit
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def setup_ui(self) -> None:
-        """Builds the main UI layout fragments."""
-        # Header
-        self.header = tk.Frame(self.root, bg=config.header_bg, height=35)
-        self.header.pack(fill="x", side="top")
-        
-        self.title_label = tk.Label(
-            self.header, text="Fly Notes", fg="white", bg=config.header_bg,
-            font=config.font_header
+    # ── UI construction ──────────────────────
+
+    def _build_ui(self) -> None:
+        # --- Header ---
+        self._header = tk.Frame(self.root, bg=config.header_bg, height=35)
+        self._header.pack(fill="x", side="top")
+
+        self._title_lbl = tk.Label(
+            self._header,
+            text="Fly Notes",
+            fg="white",
+            bg=config.header_bg,
+            font=config.font_header,
         )
-        self.title_label.pack(side="left", padx=10, pady=5)
-        
-        self.close_btn = tk.Button(
-            self.header, text="✕", command=self.root.destroy,
-            bg=config.header_bg, fg="white", bd=0, activebackground="#FF4500",
-            padx=10, font=config.font_header
-        )
-        self.close_btn.pack(side="right", fill="y")
+        self._title_lbl.pack(side="left", padx=10, pady=5)
 
-        self.min_btn = tk.Button(
-            self.header, text="—", command=self.window_ctrl.minimize_window,
-            bg=config.header_bg, fg="white", bd=0, activebackground="#FF4500",
-            padx=10, font=config.font_header
+        self._close_btn = tk.Button(
+            self._header,
+            text="✕",
+            command=self._on_close,
+            bg=config.header_bg,
+            fg="white",
+            bd=0,
+            activebackground="#FF4500",
+            padx=10,
+            font=config.font_header,
         )
-        self.min_btn.pack(side="right", fill="y")
+        self._close_btn.pack(side="right", fill="y")
 
-        # Entry area
-        self.entry_frame = tk.Frame(self.root, bg=config.content_bg, pady=10)
-        self.entry_frame.pack(fill="x")
-        
-        self.task_entry = tk.Entry(
-            self.entry_frame, bg="white", fg=config.text_color, insertbackground=config.text_color,
-            font=config.font_body, bd=0, highlightthickness=1,
-            highlightbackground=config.border_color
+        self._min_btn = tk.Button(
+            self._header,
+            text="—",
+            command=self.window_ctrl.minimize_window,
+            bg=config.header_bg,
+            fg="white",
+            bd=0,
+            activebackground="#FF4500",
+            padx=10,
+            font=config.font_header,
         )
-        self.task_entry.pack(fill="x", padx=10, ipady=5)
-        self.task_entry.bind("<Return>", lambda e: self.add_new_task())
+        self._min_btn.pack(side="right", fill="y")
 
-        # Task List Container
-        self.list_canvas = tk.Canvas(self.root, bg=config.content_bg, highlightthickness=0)
-        self.scroll_frame = tk.Frame(self.list_canvas, bg=config.content_bg)
-        
-        self.list_canvas.pack(fill="both", expand=True)
-        self.canvas_window_id = self.list_canvas.create_window(
-            (0,0), window=self.scroll_frame, anchor="nw", width=config.default_width
+        # --- Entry ---
+        entry_frame = tk.Frame(self.root, bg=config.content_bg, pady=10)
+        entry_frame.pack(fill="x")
+
+        self._task_entry = tk.Entry(
+            entry_frame,
+            bg="white",
+            fg=config.text_color,
+            insertbackground=config.text_color,
+            font=config.font_body,
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=config.border_color,
         )
-        
-        # Footer
-        self.footer = tk.Frame(self.root, bg=config.content_bg, pady=5)
-        self.footer.pack(fill="x", side="bottom")
-        
-        self.clear_btn = tk.Button(
-            self.footer, text="Clear Completed", command=self.clear_completed,
-            bg=config.content_bg, fg=config.strike_color, bd=0, font=config.font_footer,
-            activebackground=config.content_bg, activeforeground=config.text_color, cursor="hand2"
+        self._task_entry.pack(fill="x", padx=10, ipady=5)
+        self._task_entry.bind("<Return>", lambda _: self._add_new_task())
+
+        # --- Scrollable task list ---
+        self._list_canvas = tk.Canvas(
+            self.root, bg=config.content_bg, highlightthickness=0
         )
-        self.clear_btn.pack(side="right", padx=10)
+        self._scroll_frame = tk.Frame(self._list_canvas, bg=config.content_bg)
 
-    def setup_bindings(self) -> None:
-        """Sets up window-level event bindings."""
-        self.window_ctrl.bind_drag(self.header)
-        self.window_ctrl.bind_drag(self.title_label)
-        
-        self.root.bind("<FocusIn>", lambda e: self.root.attributes("-alpha", config.active_alpha))
-        self.root.bind("<FocusOut>", lambda e: self.root.attributes("-alpha", config.inactive_alpha))
-        self.root.bind("<Map>", lambda e: self.root.attributes("-topmost", True))
+        self._list_canvas.pack(fill="both", expand=True)
+        self._canvas_win_id = self._list_canvas.create_window(
+            (0, 0),
+            window=self._scroll_frame,
+            anchor="nw",
+            width=config.default_width,
+        )
 
-    def add_new_task(self) -> None:
-        """Adds a new task using granular UI update."""
-        text = self.task_entry.get().strip()
-        if text:
-            task = self.manager.add_task(text)
-            self.task_entry.delete(0, tk.END)
-            self._create_task_widget(task)
-            self.update_canvas()
+        # --- Footer ---
+        footer = tk.Frame(self.root, bg=config.content_bg, pady=5)
+        footer.pack(fill="x", side="bottom")
+
+        self._clear_btn = tk.Button(
+            footer,
+            text="Clear Completed",
+            command=self._clear_completed,
+            bg=config.content_bg,
+            fg=config.strike_color,
+            bd=0,
+            font=config.font_footer,
+            activebackground=config.content_bg,
+            activeforeground=config.text_color,
+            cursor="hand2",
+        )
+        self._clear_btn.pack(side="right", padx=10)
+
+    # ── Event bindings ───────────────────────
+
+    def _bind_events(self) -> None:
+        self.window_ctrl.bind_drag(self._header)
+        self.window_ctrl.bind_drag(self._title_lbl)
+
+        self.root.bind(
+            "<FocusIn>",
+            lambda _: self.root.attributes("-alpha", config.active_alpha),
+        )
+        self.root.bind(
+            "<FocusOut>",
+            lambda _: self.root.attributes("-alpha", config.inactive_alpha),
+        )
+        self.root.bind(
+            "<Map>", lambda _: self.root.attributes("-topmost", True)
+        )
+
+        # Mouse‑wheel scroll
+        self._list_canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self._list_canvas.bind("<Button-4>", self._on_mousewheel)   # Linux up
+        self._list_canvas.bind("<Button-5>", self._on_mousewheel)   # Linux down
+        self._scroll_frame.bind("<MouseWheel>", self._on_mousewheel)
+        self._scroll_frame.bind("<Button-4>", self._on_mousewheel)
+        self._scroll_frame.bind("<Button-5>", self._on_mousewheel)
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        """Cross‑platform mouse‑wheel handler."""
+        if event.num == 4:          # Linux scroll‑up
+            delta = -1
+        elif event.num == 5:        # Linux scroll‑down
+            delta = 1
+        else:                       # Windows / macOS
+            delta = int(-1 * (event.delta / 120))
+        self._list_canvas.yview_scroll(delta, "units")
+
+    # ── Task CRUD (UI ↔ data) ────────────────
+
+    def _add_new_task(self) -> None:
+        text = self._task_entry.get().strip()
+        if not text:
+            return
+        # Enforce length limit
+        if len(text) > config.max_task_length:
+            text = text[: config.max_task_length]
+        task = self.manager.add_task(text)
+        self._task_entry.delete(0, tk.END)
+        self._create_task_widget(task)
+        self._update_canvas()
 
     def _create_task_widget(self, task: Dict[str, Any]) -> TaskItem:
-        """Helper to instantiate and pack a single task widget."""
-        ui_item = TaskItem(
-            self.scroll_frame,
+        widget = TaskItem(
+            self._scroll_frame,
+            task_id=task["id"],
             text=task["text"],
             completed=task["completed"],
-            on_status_change=self.toggle_task,
-            on_delete=self.delete_task,
-            on_drag_start=self.start_reorder,
-            on_drag_do=self.do_reorder,
-            on_drag_stop=self.stop_reorder
+            on_status_change=self._toggle_task,
+            on_delete=self._delete_task,
+            on_drag_start=self._start_reorder,
+            on_drag_do=self._do_reorder,
+            on_drag_stop=self._stop_reorder,
         )
-        ui_item.pack(fill="x", pady=2, padx=5)
-        self.tasks_ui.append(ui_item)
-        return ui_item
+        widget.pack(fill="x", pady=2, padx=5)
 
-    def delete_task(self, ui_item: TaskItem) -> None:
-        """Removes a specific task widget and updates data layer."""
-        try:
-            idx = self.tasks_ui.index(ui_item)
-            self.manager.delete_task(idx)
-            self.tasks_ui.pop(idx)
-            ui_item.destroy()
-            self.update_canvas()
-        except ValueError:
-            pass
+        # Propagate mousewheel events from each child
+        for child in (widget, widget.label, widget.check, widget.delete_btn):
+            child.bind("<MouseWheel>", self._on_mousewheel)
+            child.bind("<Button-4>", self._on_mousewheel)
+            child.bind("<Button-5>", self._on_mousewheel)
 
-    def toggle_task(self, ui_item: TaskItem) -> None:
-        """Toggles the task status in the data layer."""
-        try:
-            idx = self.tasks_ui.index(ui_item)
-            self.manager.toggle_task(idx)
-        except ValueError:
-            pass
+        self._task_widgets.append(widget)
+        return widget
 
-    def clear_completed(self) -> None:
-        """Removes completed tasks from UI and manager."""
+    def _delete_task(self, item: TaskItem) -> None:
+        self.manager.delete_task(item.task_id)
+        self._task_widgets.remove(item)
+        item.destroy()
+        self._update_canvas()
+
+    def _toggle_task(self, item: TaskItem) -> None:
+        self.manager.toggle_task(item.task_id)
+
+    def _clear_completed(self) -> None:
         self.manager.clear_completed()
-        # Filter UI items that are completed
-        to_remove = [item for item in self.tasks_ui if item.completed_var.get()]
-        for item in to_remove:
-            self.tasks_ui.remove(item)
-            item.destroy()
-        self.update_canvas()
+        to_remove = [w for w in self._task_widgets if w.completed_var.get()]
+        for w in to_remove:
+            self._task_widgets.remove(w)
+            w.destroy()
+        self._update_canvas()
 
-    def load_initial_tasks(self) -> None:
-        """Initial task load on startup."""
-        for task in self.manager.tasks:
-            self._create_task_widget(task)
-        self.update_canvas()
+    # ── Drag‑and‑drop reorder ────────────────
 
-    def refresh_list(self) -> None:
-        """Full rebuild (rarely used now, kept for fallback)."""
-        for item in self.tasks_ui:
-            item.destroy()
-        self.tasks_ui = []
-        self.load_initial_tasks()
-
-    def update_canvas(self) -> None:
-        """Updates the scroll region of the list canvas."""
-        self.scroll_frame.update_idletasks()
-        self.list_canvas.config(scrollregion=self.list_canvas.bbox("all"))
-
-    def repack_tasks(self) -> None:
-        """Efficiency helper to update packing order without recreation."""
-        for t in self.tasks_ui:
-            t.pack_forget()
-        for t in self.tasks_ui:
-            t.pack(fill="x", pady=2, padx=5)
-        self.update_canvas()
-
-    def handle_error(self, message: str) -> None:
-        """Displays error messages in a standard OS dialog."""
-        messagebox.showerror("Fly Notes Error", message)
-
-    def start_reorder(self, item: TaskItem, event: tk.Event) -> None:
-        """Initiates a drag-and-drop reorder operation."""
-        self.dragging_item = item
+    def _start_reorder(self, item: TaskItem, event: tk.Event) -> None:
+        self._dragging_item = item
+        self._drag_start_y = event.y_root
         item.set_bg(config.drag_highlight_color)
-        self.drag_start_y = event.y_root
 
-    def stop_reorder(self, item: TaskItem, event: tk.Event) -> None:
-        """Finalizes a drag-and-drop operation."""
-        if self.dragging_item:
-            self.dragging_item.set_bg(config.item_bg)
-            self.dragging_item = None
-        self.update_canvas()
+    def _stop_reorder(self, item: TaskItem, event: tk.Event) -> None:
+        if self._dragging_item:
+            self._dragging_item.set_bg(config.item_bg)
+            self._dragging_item = None
+        self._update_canvas()
 
-    def do_reorder(self, item: TaskItem, event: tk.Event) -> None:
-        """Determines if items should be swapped during active dragging."""
-        if not self.dragging_item: return
-        
+    def _do_reorder(self, item: TaskItem, event: tk.Event) -> None:
+        if self._dragging_item is None:
+            return
         y = event.y_root
         try:
-            idx = self.tasks_ui.index(item)
-            if y < self.drag_start_y - config.drag_threshold and idx > 0:
-                # Move Up
-                if self.manager.reorder_tasks(idx, idx-1):
-                    self.tasks_ui[idx], self.tasks_ui[idx-1] = self.tasks_ui[idx-1], self.tasks_ui[idx]
-                    self.repack_tasks()
-                    self.drag_start_y = y
-            elif y > self.drag_start_y + config.drag_threshold and idx < len(self.tasks_ui) - 1:
-                # Move Down
-                if self.manager.reorder_tasks(idx, idx+1):
-                    self.tasks_ui[idx], self.tasks_ui[idx+1] = self.tasks_ui[idx+1], self.tasks_ui[idx]
-                    self.repack_tasks()
-                    self.drag_start_y = y
+            idx = self._task_widgets.index(item)
         except ValueError:
+            return
+
+        if y < self._drag_start_y - config.drag_threshold and idx > 0:
+            if self.manager.reorder_tasks(idx, idx - 1):
+                self._task_widgets[idx], self._task_widgets[idx - 1] = (
+                    self._task_widgets[idx - 1],
+                    self._task_widgets[idx],
+                )
+                self._repack_tasks()
+                self._drag_start_y = y
+        elif (
+            y > self._drag_start_y + config.drag_threshold
+            and idx < len(self._task_widgets) - 1
+        ):
+            if self.manager.reorder_tasks(idx, idx + 1):
+                self._task_widgets[idx], self._task_widgets[idx + 1] = (
+                    self._task_widgets[idx + 1],
+                    self._task_widgets[idx],
+                )
+                self._repack_tasks()
+                self._drag_start_y = y
+
+    # ── Helpers ──────────────────────────────
+
+    def _load_initial_tasks(self) -> None:
+        for task in self.manager.tasks:
+            self._create_task_widget(task)
+        self._update_canvas()
+
+    def _repack_tasks(self) -> None:
+        for w in self._task_widgets:
+            w.pack_forget()
+        for w in self._task_widgets:
+            w.pack(fill="x", pady=2, padx=5)
+        self._update_canvas()
+
+    def _update_canvas(self) -> None:
+        self._scroll_frame.update_idletasks()
+        self._list_canvas.config(scrollregion=self._list_canvas.bbox("all"))
+
+    def _on_window_resize(self) -> None:
+        new_w = self.root.winfo_width()
+        self._list_canvas.itemconfigure(self._canvas_win_id, width=new_w)
+        self._update_canvas()
+
+    def _handle_error(self, message: str) -> None:
+        messagebox.showerror("Fly Notes Error", message)
+
+    def _on_close(self) -> None:
+        """Flush pending saves and destroy the window."""
+        try:
+            self.manager.flush()
+        except Exception:
             pass
+        self.root.destroy()

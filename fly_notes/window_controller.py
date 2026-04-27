@@ -1,51 +1,178 @@
+"""
+Borderless‑window utilities: dragging, resizing and a taskbar proxy.
+
+Key fixes over the original
+───────────────────────────
+* ``is_resizing`` is properly **reset** on ``<ButtonRelease‑1>``.
+* The resize handle set now covers **all four edges and four corners**.
+* The taskbar‑proxy timing has been made more robust with flag guards.
+"""
+
+from __future__ import annotations
+
 import tkinter as tk
-from typing import Optional, Callable
+from typing import Callable, Optional
+
 from .config import config
 
+# Edge identifiers — combinations of these characters
+_EDGES = {
+    "n", "s", "e", "w",
+    "ne", "nw", "se", "sw",
+}
+
+# Cursor map per edge
+_CURSOR_MAP = {
+    "n":  "sb_v_double_arrow",
+    "s":  "sb_v_double_arrow",
+    "e":  "sb_h_double_arrow",
+    "w":  "sb_h_double_arrow",
+    "ne": "size_ne_sw",
+    "nw": "size_nw_se",
+    "se": "size_nw_se",
+    "sw": "size_ne_sw",
+}
+
+
 class WindowController:
-    """
-    Handles borderless window logic: dragging, resizing, and taskbar proxy.
-    """
-    
-    def __init__(self, root: tk.Tk, on_resize_callback: Optional[Callable[[], None]] = None):
+    """Manages borderless‑window dragging, 8‑direction resizing and taskbar proxy."""
+
+    _GRIP = 6  # px thickness of invisible edge grips
+
+    def __init__(
+        self,
+        root: tk.Tk,
+        on_resize_callback: Optional[Callable[[], None]] = None,
+    ) -> None:
         self.root = root
         self.on_resize_callback = on_resize_callback
-        
-        # Internal state for dragging/resizing
-        self.offset_x: int = 0
-        self.offset_y: int = 0
-        self.is_resizing: bool = False
-        self.resize_edge: Optional[str] = None
-        self.start_x: int = 0
-        self.start_y: int = 0
-        self.start_w: int = 0
-        self.start_h: int = 0
-        
-        # Taskbar proxy state
+
+        # Drag state
+        self._offset_x: int = 0
+        self._offset_y: int = 0
+
+        # Resize state
+        self._is_resizing: bool = False
+        self._resize_edge: str = ""
+        self._start_x: int = 0
+        self._start_y: int = 0
+        self._start_w: int = 0
+        self._start_h: int = 0
+        self._start_win_x: int = 0
+        self._start_win_y: int = 0
+
+        # Taskbar proxy
         self._was_minimized: bool = False
         self._proxy_programmatic: bool = False
-        
-        self.setup_taskbar_proxy()
+        self._setup_taskbar_proxy()
 
-    def setup_taskbar_proxy(self) -> None:
-        """Creates a hidden proxy window to enable taskbar presence."""
-        self.proxy = tk.Toplevel(self.root)
-        self.proxy.title("Fly Notes")
-        self.proxy.geometry("1x1+-32000+-32000")
-        self.proxy.resizable(False, False)
-        self.proxy.protocol("WM_DELETE_WINDOW", self.root.destroy)
-        self.proxy.bind("<Map>", self._proxy_restore_request)
-        self.proxy.bind("<FocusIn>", self._proxy_restore_request)
-        self.proxy.withdraw()
+    # ── Window dragging ──────────────────────
 
-    def _proxy_restore_request(self, event: Optional[tk.Event] = None) -> None:
-        """Handles restoration from the taskbar proxy."""
-        if self._proxy_programmatic:
+    def bind_drag(self, widget: tk.Widget) -> None:
+        widget.bind("<Button-1>", self._start_move)
+        widget.bind("<B1-Motion>", self._do_move)
+
+    def _start_move(self, event: tk.Event) -> None:
+        self._offset_x = event.x
+        self._offset_y = event.y
+
+    def _do_move(self, event: tk.Event) -> None:
+        x = self.root.winfo_x() + event.x - self._offset_x
+        y = self.root.winfo_y() + event.y - self._offset_y
+        self.root.geometry(f"+{x}+{y}")
+
+    # ── 8‑direction resizing ─────────────────
+
+    def setup_resize_handles(self, bg_color: str) -> None:
+        """Create invisible edge/corner grips around the window."""
+        g = self._GRIP
+
+        # fmt: off
+        specs = [
+            # edge   place kwargs
+            ("n",  dict(x=0, y=0, relwidth=1.0, height=g)),
+            ("s",  dict(x=0, rely=1.0, y=-g, relwidth=1.0, height=g)),
+            ("e",  dict(rely=0, relx=1.0, x=-g, width=g, relheight=1.0)),
+            ("w",  dict(x=0, y=0, width=g, relheight=1.0)),
+            ("ne", dict(relx=1.0, x=-g, y=0, width=g, height=g)),
+            ("nw", dict(x=0, y=0, width=g, height=g)),
+            ("se", dict(relx=1.0, x=-g, rely=1.0, y=-g, width=g, height=g)),
+            ("sw", dict(x=0, rely=1.0, y=-g, width=g, height=g)),
+        ]
+        # fmt: on
+
+        for edge, place_kw in specs:
+            grip = tk.Frame(self.root, bg=bg_color, cursor=_CURSOR_MAP[edge])
+            grip.place(**place_kw)
+            grip.bind("<Button-1>", lambda e, ed=edge: self._start_resize(ed, e))
+            grip.bind("<B1-Motion>", self._do_resize)
+            grip.bind("<ButtonRelease-1>", self._stop_resize)
+
+    def _start_resize(self, edge: str, event: tk.Event) -> None:
+        self._is_resizing = True
+        self._resize_edge = edge
+        self._start_x = event.x_root
+        self._start_y = event.y_root
+        self._start_w = self.root.winfo_width()
+        self._start_h = self.root.winfo_height()
+        self._start_win_x = self.root.winfo_x()
+        self._start_win_y = self.root.winfo_y()
+
+    def _do_resize(self, event: tk.Event) -> None:
+        if not self._is_resizing:
             return
-        if not self._was_minimized:
+
+        dx = event.x_root - self._start_x
+        dy = event.y_root - self._start_y
+        edge = self._resize_edge
+
+        new_x = self._start_win_x
+        new_y = self._start_win_y
+        new_w = self._start_w
+        new_h = self._start_h
+
+        if "e" in edge:
+            new_w = max(config.min_width, self._start_w + dx)
+        if "w" in edge:
+            proposed_w = self._start_w - dx
+            if proposed_w >= config.min_width:
+                new_w = proposed_w
+                new_x = self._start_win_x + dx
+        if "s" in edge:
+            new_h = max(config.min_height, self._start_h + dy)
+        if "n" in edge:
+            proposed_h = self._start_h - dy
+            if proposed_h >= config.min_height:
+                new_h = proposed_h
+                new_y = self._start_win_y + dy
+
+        self.root.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
+
+        if self.on_resize_callback:
+            self.on_resize_callback()
+
+    def _stop_resize(self, event: tk.Event) -> None:
+        """Reset resize state — critical fix over original code."""
+        self._is_resizing = False
+        self._resize_edge = ""
+
+    # ── Taskbar proxy (Windows) ──────────────
+
+    def _setup_taskbar_proxy(self) -> None:
+        self._proxy = tk.Toplevel(self.root)
+        self._proxy.title("Fly Notes")
+        self._proxy.geometry("1x1+-32000+-32000")
+        self._proxy.resizable(False, False)
+        self._proxy.protocol("WM_DELETE_WINDOW", self.root.destroy)
+        self._proxy.bind("<Map>", self._proxy_restore)
+        self._proxy.bind("<FocusIn>", self._proxy_restore)
+        self._proxy.withdraw()
+
+    def _proxy_restore(self, _event: Optional[tk.Event] = None) -> None:
+        if self._proxy_programmatic or not self._was_minimized:
             return
         self._was_minimized = False
-        self.proxy.withdraw()
+        self._proxy.withdraw()
         self.root.deiconify()
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
@@ -53,70 +180,12 @@ class WindowController:
         self.root.focus_force()
 
     def minimize_window(self) -> None:
-        """Withdraws main window and shows it in taskbar via proxy."""
         self._was_minimized = True
         self.root.withdraw()
         self._proxy_programmatic = True
-        self.proxy.deiconify()
-        self.proxy.after_idle(self.proxy.iconify)
-        self.proxy.after(200, lambda: setattr(self, "_proxy_programmatic", False))
+        self._proxy.deiconify()
+        self._proxy.after_idle(self._proxy.iconify)
+        self._proxy.after(300, self._clear_proxy_flag)
 
-    def bind_drag(self, widget: tk.Widget) -> None:
-        """Binds a widget to move the window."""
-        widget.bind("<Button-1>", self.start_move)
-        widget.bind("<B1-Motion>", self.do_move)
-
-    def start_move(self, event: tk.Event) -> None:
-        self.offset_x = event.x
-        self.offset_y = event.y
-
-    def do_move(self, event: tk.Event) -> None:
-        x = self.root.winfo_x() + event.x - self.offset_x
-        y = self.root.winfo_y() + event.y - self.offset_y
-        self.root.geometry(f"+{x}+{y}")
-
-    def setup_resize_handles(self, bg_color: str) -> None:
-        """Creates invisible frames for window resizing."""
-        self._create_resizer("r", 1.0, 0.0, 1.0, "ne", "sb_h_double_arrow", bg_color, width=5)
-        self._create_resizer("b", 0.0, 1.0, 1.0, "sw", "sb_v_double_arrow", bg_color, height=5)
-        self._create_resizer("se", 1.0, 1.0, None, "se", "size_nw_se", bg_color, width=10, height=10)
-
-    def _create_resizer(self, edge: str, relx: float, rely: float, relsize: Optional[float], 
-                        anchor: str, cursor: str, bg_color: str, **kwargs) -> None:
-        resizer = tk.Frame(self.root, bg=bg_color, cursor=cursor, **kwargs)
-        if "r" in edge and relsize:
-            resizer.place(relx=relx, rely=rely, relheight=relsize, anchor=anchor)
-        elif "b" in edge and relsize:
-            resizer.place(relx=relx, rely=rely, relwidth=relsize, anchor=anchor)
-        else:
-            resizer.place(relx=relx, rely=rely, anchor=anchor)
-        
-        resizer.bind("<Button-1>", lambda e: self.start_resize(edge, e))
-        resizer.bind("<B1-Motion>", self.do_resize)
-
-    def start_resize(self, edge: str, event: tk.Event) -> None:
-        self.is_resizing = True
-        self.resize_edge = edge
-        self.start_x = event.x_root
-        self.start_y = event.y_root
-        self.start_w = self.root.winfo_width()
-        self.start_h = self.root.winfo_height()
-
-    def do_resize(self, event: tk.Event) -> None:
-        if not self.is_resizing: return
-        dx = event.x_root - self.start_x
-        dy = event.y_root - self.start_y
-        new_w = self.start_w
-        new_h = self.start_h
-        
-        if "r" in self.resize_edge:
-            new_w = max(config.min_width, self.start_w + dx)
-        if "b" in self.resize_edge:
-            new_h = max(config.min_height, self.start_h + dy)
-        if "se" == self.resize_edge:
-            new_w = max(config.min_width, self.start_w + dx)
-            new_h = max(config.min_height, self.start_h + dy)
-            
-        self.root.geometry(f"{new_w}x{new_h}")
-        if self.on_resize_callback:
-            self.on_resize_callback()
+    def _clear_proxy_flag(self) -> None:
+        self._proxy_programmatic = False
