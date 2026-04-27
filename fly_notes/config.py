@@ -116,15 +116,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "strings": {
         "app_title":            "Fly Notes",
         "entry_placeholder":    "Add a new task…",
-        "clear_completed":      "Clear completed ({count})",  # ← MEJORADO: muestra cantidad
+        "clear_completed":      "Clear completed ({count})",
         "clear_completed_zero": "Clear completed",
         "empty_state":          "No tasks yet — type above to start!",
         "confirm_delete_title": "Delete Task",
         "confirm_delete_msg":   "Remove this task permanently?",
         "confirm_clear_title":  "Clear Completed",
         "confirm_clear_msg":    "Remove {count} completed task(s)?",
-        "section_pending":      "TO DO",           # ← NUEVO
-        "section_completed":    "COMPLETED",        # ← NUEVO
+        "section_pending":      "To Do ({count})",        # ← Title case + counter
+        "section_completed":    "Completed ({count})",    # ← Title case + counter
     },
 }
 

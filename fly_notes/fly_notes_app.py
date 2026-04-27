@@ -444,10 +444,21 @@ class FlyNotesApp:
         self._repack_tasks()
 
     def _repack_tasks(self) -> None:
-        """Repack all task widgets, optionally grouped by completion status."""
-        # Remove everything from scroll_frame
+        """
+        Repack all task widgets with optional grouping.
+        
+        Creates section headers with counters and ensures
+        proper bottom padding so the last item isn't clipped
+        by the footer.
+        """
+        # Clear all children from scroll_frame (including old separators/headers)
         for w in self._scroll_frame.winfo_children():
-            w.pack_forget()
+            # Don't destroy task widgets — just unpack them
+            if isinstance(w, TaskItem):
+                w.pack_forget()
+            else:
+                # Destroy transient widgets (separators, section headers, spacers)
+                w.destroy()
 
         if not self._task_widgets:
             return
@@ -456,35 +467,72 @@ class FlyNotesApp:
             pending = [w for w in self._task_widgets if not w.completed_var.get()]
             completed = [w for w in self._task_widgets if w.completed_var.get()]
 
-            # Pack pending tasks
-            for w in pending:
-                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
-
-            # Separator + section header for completed
-            if completed and pending:
-                sep = tk.Frame(
+            # ── Section: TO DO ───────────────
+            if pending:
+                pending_header = tk.Label(
                     self._scroll_frame,
-                    bg=config.separator_color,
-                    height=config.separator_height,
-                    bd=0,
-                )
-                sep.pack(fill="x", padx=config.spacing_xl, pady=(config.spacing_md, config.spacing_xs))
-
-                header = tk.Label(
-                    self._scroll_frame,
-                    text=config.string("section_completed"),
+                    text=config.string("section_pending", count=len(pending)),
                     fg=config.text_secondary,
                     bg=config.content_bg,
                     font=config.font_section,
                     anchor="w",
                 )
-                header.pack(fill="x", padx=config.spacing_xl, pady=(0, config.spacing_xs))
+                pending_header.pack(
+                    fill="x",
+                    padx=config.spacing_xl,
+                    pady=(config.spacing_md, config.spacing_xs),
+                )
 
-            for w in completed:
+            for w in pending:
                 w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+            # ── Separator + Section: COMPLETED ──
+            if completed:
+                # Only show separator if there are also pending tasks
+                if pending:
+                    sep = tk.Frame(
+                        self._scroll_frame,
+                        bg=config.separator_color,
+                        height=config.separator_height,
+                        bd=0,
+                    )
+                    sep.pack(
+                        fill="x",
+                        padx=config.spacing_xl,
+                        pady=(config.spacing_lg, config.spacing_xs),
+                    )
+
+                completed_header = tk.Label(
+                    self._scroll_frame,
+                    text=config.string("section_completed", count=len(completed)),
+                    fg=config.text_secondary,
+                    bg=config.content_bg,
+                    font=config.font_section,
+                    anchor="w",
+                )
+                completed_header.pack(
+                    fill="x",
+                    padx=config.spacing_xl,
+                    pady=(config.spacing_xs, config.spacing_xs),
+                )
+
+                for w in completed:
+                    w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
         else:
+            # No grouping — flat list
             for w in self._task_widgets:
                 w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+        # ── Bottom spacer ────────────────────
+        # Prevents the last item from being clipped by the footer
+        bottom_spacer = tk.Frame(
+            self._scroll_frame,
+            bg=config.content_bg,
+            height=config.spacing_lg,
+            bd=0,
+        )
+        bottom_spacer.pack(fill="x")
 
         self._update_canvas()
 
