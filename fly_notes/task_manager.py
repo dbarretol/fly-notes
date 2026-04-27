@@ -1,14 +1,8 @@
 """
-Data layer for task CRUD operations with debounced, atomic persistence.
+Data layer — task CRUD with debounced atomic persistence.
 
-Design decisions
-────────────────
-* Each task carries a UUID so the UI can reference it without relying on
-  fragile list‑index equality.
-* ``save_tasks`` writes to a temporary file first, then does an atomic
-  ``os.replace`` to avoid corruption on crashes.
-* Saves are **debounced** (default 500 ms) so rapid drag‑reorders don't
-  hammer the disk.
+Unchanged in this UI/UX pass except for the addition of ``task_count``
+and ``completed_count`` helpers that the UI needs for badges.
 """
 
 from __future__ import annotations
@@ -23,14 +17,13 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Type alias for a single task record
 Task = Dict[str, Any]
 
 
 class TaskManager:
     """Manages task lifecycle and JSON persistence."""
 
-    SAVE_DELAY: float = 0.5  # seconds — debounce window
+    SAVE_DELAY: float = 0.5
 
     def __init__(
         self,
@@ -44,28 +37,37 @@ class TaskManager:
         self._lock = threading.Lock()
         self._load_tasks()
 
-    # ── Public read‑only access ──────────────
+    # ── Read access ──────────────────────────
 
     @property
     def tasks(self) -> List[Task]:
-        """Shallow copy — callers may read but must not mutate."""
         return list(self._tasks)
 
+    @property
+    def task_count(self) -> int:
+        return len(self._tasks)
+
+    @property
+    def completed_count(self) -> int:
+        return sum(1 for t in self._tasks if t["completed"])
+
+    @property
+    def pending_count(self) -> int:
+        return self.task_count - self.completed_count
+
     def task_by_id(self, task_id: str) -> Optional[Task]:
-        """Look up a task by its unique id."""
         for t in self._tasks:
             if t["id"] == task_id:
                 return t
         return None
 
     def index_of(self, task_id: str) -> int:
-        """Return the index of *task_id*, or raise ``ValueError``."""
         for i, t in enumerate(self._tasks):
             if t["id"] == task_id:
                 return i
         raise ValueError(f"Task id '{task_id}' not found")
 
-    # ── CRUD operations ──────────────────────
+    # ── CRUD ─────────────────────────────────
 
     def add_task(self, text: str, completed: bool = False) -> Task:
         task: Task = {
@@ -96,9 +98,7 @@ class TaskManager:
             return None
         self._tasks[idx]["completed"] = not self._tasks[idx]["completed"]
         self._schedule_save()
-        logger.info(
-            "Task toggled: %s → %s", task_id, self._tasks[idx]["completed"]
-        )
+        logger.info("Task toggled: %s → %s", task_id, self._tasks[idx]["completed"])
         return self._tasks[idx]
 
     def reorder_tasks(self, old_idx: int, new_idx: int) -> bool:
@@ -107,11 +107,9 @@ class TaskManager:
         task = self._tasks.pop(old_idx)
         self._tasks.insert(new_idx, task)
         self._schedule_save()
-        logger.info("Reordered %d → %d", old_idx, new_idx)
         return True
 
     def clear_completed(self) -> int:
-        """Remove completed tasks. Returns how many were removed."""
         before = len(self._tasks)
         self._tasks = [t for t in self._tasks if not t["completed"]]
         removed = before - len(self._tasks)
@@ -122,7 +120,6 @@ class TaskManager:
     # ── Persistence ──────────────────────────
 
     def _schedule_save(self) -> None:
-        """Debounced save — coalesces rapid writes."""
         with self._lock:
             if self._save_timer is not None:
                 self._save_timer.cancel()
@@ -131,7 +128,6 @@ class TaskManager:
             self._save_timer.start()
 
     def flush(self) -> None:
-        """Force an immediate save (e.g. on app shutdown)."""
         with self._lock:
             if self._save_timer is not None:
                 self._save_timer.cancel()
@@ -139,7 +135,6 @@ class TaskManager:
         self._do_save()
 
     def _do_save(self) -> None:
-        """Atomic write: tmp file → os.replace → target."""
         try:
             dir_name = os.path.dirname(self.tasks_file) or "."
             fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
@@ -148,7 +143,6 @@ class TaskManager:
                     json.dump(self._tasks, fh, ensure_ascii=False, indent=2)
                 os.replace(tmp_path, self.tasks_file)
             except BaseException:
-                # Clean up the temp file on failure
                 try:
                     os.unlink(tmp_path)
                 except OSError:
@@ -180,7 +174,6 @@ class TaskManager:
 
     @staticmethod
     def _sanitise_task(raw: Any) -> Task:
-        """Ensure every task dict has the required keys."""
         if not isinstance(raw, dict):
             raise TypeError(f"Task must be a dict, got {type(raw).__name__}")
         return {

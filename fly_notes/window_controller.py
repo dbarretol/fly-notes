@@ -1,11 +1,7 @@
 """
-Borderless‑window utilities: dragging, resizing and a taskbar proxy.
+Borderless-window controller — dragging, 8-direction resizing, taskbar proxy.
 
-Key fixes over the original
-───────────────────────────
-* ``is_resizing`` is properly **reset** on ``<ButtonRelease‑1>``.
-* The resize handle set now covers **all four edges and four corners**.
-* The taskbar‑proxy timing has been made more robust with flag guards.
+No significant UX changes here beyond inheriting the updated config tokens.
 """
 
 from __future__ import annotations
@@ -15,13 +11,6 @@ from typing import Callable, Optional
 
 from .config import config
 
-# Edge identifiers — combinations of these characters
-_EDGES = {
-    "n", "s", "e", "w",
-    "ne", "nw", "se", "sw",
-}
-
-# Cursor map per edge
 _CURSOR_MAP = {
     "n":  "sb_v_double_arrow",
     "s":  "sb_v_double_arrow",
@@ -35,9 +24,9 @@ _CURSOR_MAP = {
 
 
 class WindowController:
-    """Manages borderless‑window dragging, 8‑direction resizing and taskbar proxy."""
+    """Manages borderless-window dragging, 8-direction resizing and taskbar proxy."""
 
-    _GRIP = 6  # px thickness of invisible edge grips
+    _GRIP = 6
 
     def __init__(
         self,
@@ -47,11 +36,9 @@ class WindowController:
         self.root = root
         self.on_resize_callback = on_resize_callback
 
-        # Drag state
         self._offset_x: int = 0
         self._offset_y: int = 0
 
-        # Resize state
         self._is_resizing: bool = False
         self._resize_edge: str = ""
         self._start_x: int = 0
@@ -61,12 +48,11 @@ class WindowController:
         self._start_win_x: int = 0
         self._start_win_y: int = 0
 
-        # Taskbar proxy
         self._was_minimized: bool = False
         self._proxy_programmatic: bool = False
         self._setup_taskbar_proxy()
 
-    # ── Window dragging ──────────────────────
+    # ── Dragging ─────────────────────────────
 
     def bind_drag(self, widget: tk.Widget) -> None:
         widget.bind("<Button-1>", self._start_move)
@@ -81,15 +67,11 @@ class WindowController:
         y = self.root.winfo_y() + event.y - self._offset_y
         self.root.geometry(f"+{x}+{y}")
 
-    # ── 8‑direction resizing ─────────────────
+    # ── 8-dir resizing ───────────────────────
 
     def setup_resize_handles(self, bg_color: str) -> None:
-        """Create invisible edge/corner grips around the window."""
         g = self._GRIP
-
-        # fmt: off
         specs = [
-            # edge   place kwargs
             ("n",  dict(x=0, y=0, relwidth=1.0, height=g)),
             ("s",  dict(x=0, rely=1.0, y=-g, relwidth=1.0, height=g)),
             ("e",  dict(rely=0, relx=1.0, x=-g, width=g, relheight=1.0)),
@@ -99,8 +81,6 @@ class WindowController:
             ("se", dict(relx=1.0, x=-g, rely=1.0, y=-g, width=g, height=g)),
             ("sw", dict(x=0, rely=1.0, y=-g, width=g, height=g)),
         ]
-        # fmt: on
-
         for edge, place_kw in specs:
             grip = tk.Frame(self.root, bg=bg_color, cursor=_CURSOR_MAP[edge])
             grip.place(**place_kw)
@@ -121,42 +101,37 @@ class WindowController:
     def _do_resize(self, event: tk.Event) -> None:
         if not self._is_resizing:
             return
-
         dx = event.x_root - self._start_x
         dy = event.y_root - self._start_y
         edge = self._resize_edge
 
-        new_x = self._start_win_x
-        new_y = self._start_win_y
-        new_w = self._start_w
-        new_h = self._start_h
+        new_x, new_y = self._start_win_x, self._start_win_y
+        new_w, new_h = self._start_w, self._start_h
 
         if "e" in edge:
             new_w = max(config.min_width, self._start_w + dx)
         if "w" in edge:
-            proposed_w = self._start_w - dx
-            if proposed_w >= config.min_width:
-                new_w = proposed_w
+            proposed = self._start_w - dx
+            if proposed >= config.min_width:
+                new_w = proposed
                 new_x = self._start_win_x + dx
         if "s" in edge:
             new_h = max(config.min_height, self._start_h + dy)
         if "n" in edge:
-            proposed_h = self._start_h - dy
-            if proposed_h >= config.min_height:
-                new_h = proposed_h
+            proposed = self._start_h - dy
+            if proposed >= config.min_height:
+                new_h = proposed
                 new_y = self._start_win_y + dy
 
         self.root.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
-
         if self.on_resize_callback:
             self.on_resize_callback()
 
     def _stop_resize(self, event: tk.Event) -> None:
-        """Reset resize state — critical fix over original code."""
         self._is_resizing = False
         self._resize_edge = ""
 
-    # ── Taskbar proxy (Windows) ──────────────
+    # ── Taskbar proxy ────────────────────────
 
     def _setup_taskbar_proxy(self) -> None:
         self._proxy = tk.Toplevel(self.root)
