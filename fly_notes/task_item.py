@@ -17,10 +17,8 @@ from .config import config
 
 class CustomCheckbox(tk.Canvas):
     """
-    A canvas-drawn checkbox that replaces the native Tkinter Checkbutton.
-    
-    Renders a rounded-ish box with an animated checkmark.
-    Visually consistent across all platforms.
+    Canvas-drawn checkbox — consistent across all platforms.
+    Improved: stronger border for unchecked, subtle hover feedback.
     """
 
     def __init__(
@@ -31,8 +29,8 @@ class CustomCheckbox(tk.Canvas):
         command: Optional[Callable[[], None]] = None,
         bg: str = "#FFFFFF",
         check_color: str = "#B35C00",
-        border_color: str = "#D4B896",
-        hover_color: str = "#FFF4E6",
+        border_color: str = "#B0977A",
+        hover_color: str = "#FFF0E0",
         **kwargs,
     ) -> None:
         super().__init__(
@@ -86,45 +84,55 @@ class CustomCheckbox(tk.Canvas):
     def _draw(self) -> None:
         self.delete("all")
         s = self._size
-        pad = 1
-        r = 3  # corner radius approximation
+        pad = 2
 
-        # Background fill
         if self._checked:
             fill = self._check_color
             outline = self._check_color
+            border_w = 2
         elif self._is_hovered:
             fill = self._hover_color
             outline = self._check_color
+            border_w = 2
         else:
             fill = self._bg
             outline = self._border_color
+            border_w = 1.5
 
-        # Rounded rectangle (approximated with polygon)
-        self.create_rectangle(
-            pad, pad, s - pad, s - pad,
-            fill=fill,
-            outline=outline,
-            width=1.5,
-        )
+        # Box with rounded corners (approximation)
+        r = 3
+        self.create_arc(pad, pad, pad + r*2, pad + r*2, start=90, extent=90,
+                        fill=fill, outline=outline, width=border_w, style="pieslice")
+        self.create_arc(s - pad - r*2, pad, s - pad, pad + r*2, start=0, extent=90,
+                        fill=fill, outline=outline, width=border_w, style="pieslice")
+        self.create_arc(pad, s - pad - r*2, pad + r*2, s - pad, start=180, extent=90,
+                        fill=fill, outline=outline, width=border_w, style="pieslice")
+        self.create_arc(s - pad - r*2, s - pad - r*2, s - pad, s - pad, start=270, extent=90,
+                        fill=fill, outline=outline, width=border_w, style="pieslice")
+        # Fill center
+        self.create_rectangle(pad + r, pad, s - pad - r, s - pad,
+                              fill=fill, outline=fill)
+        self.create_rectangle(pad, pad + r, s - pad, s - pad - r,
+                              fill=fill, outline=fill)
+        # Redraw border cleanly
+        self.create_rectangle(pad, pad, s - pad, s - pad,
+                              fill="", outline=outline, width=border_w)
 
         # Checkmark
         if self._checked:
-            # Draw a white checkmark
             cx, cy = s / 2, s / 2
             self.create_line(
                 cx - 4, cy,
                 cx - 1, cy + 3,
-                fill="white", width=2, capstyle="round",
+                fill="white", width=2.5, capstyle="round",
             )
             self.create_line(
                 cx - 1, cy + 3,
-                cx + 4, cy - 3,
-                fill="white", width=2, capstyle="round",
+                cx + 5, cy - 4,
+                fill="white", width=2.5, capstyle="round",
             )
 
     def set_canvas_bg(self, color: str) -> None:
-        """Update the canvas background (for row hover propagation)."""
         self.config(bg=color)
 
 
@@ -178,8 +186,8 @@ class TaskItem(tk.Frame):
             command=self._handle_status_change,
             bg=config.item_bg,
             check_color=config.checkbox_check,
-            border_color=config.border_color,
-            hover_color=config.drag_highlight_color,
+            border_color=config.checkbox_border,      # ← Nuevo token
+            hover_color=config.checkbox_hover_bg,      # ← Nuevo token
         )
         self.check.pack(side="left", padx=(0, config.spacing_md))
 

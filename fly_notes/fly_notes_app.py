@@ -83,7 +83,7 @@ class FlyNotesApp:
         )
         self._title_lbl.pack(side="left", padx=config.spacing_lg, pady=config.spacing_md)
 
-        # Close button
+        # Close
         self._close_btn = tk.Button(
             self._header, text="✕", command=self._on_close,
             bg=config.header_bg, fg=config.text_on_header,
@@ -97,7 +97,7 @@ class FlyNotesApp:
         self._close_btn.bind("<Leave>",
             lambda e: self._close_btn.config(bg=config.header_bg))
 
-        # Minimize button
+        # Minimize
         self._min_btn = tk.Button(
             self._header, text="—", command=self.window_ctrl.minimize_window,
             bg=config.header_bg, fg=config.text_on_header,
@@ -111,56 +111,63 @@ class FlyNotesApp:
         self._min_btn.bind("<Leave>",
             lambda e: self._min_btn.config(bg=config.header_bg))
 
-        # ─── Footer (PACK BEFORE canvas so it claims space) ──
+        # ─── Separator under header ─────────
+        tk.Frame(
+            self.root, bg=config.separator_color,
+            height=config.separator_height, bd=0,
+        ).pack(fill="x")
+
+        # ─── Footer (pack BEFORE canvas) ─────
+        # Separator above footer
+        self._footer_sep = tk.Frame(
+            self.root, bg=config.separator_color,
+            height=config.separator_height, bd=0,
+        )
+        self._footer_sep.pack(fill="x", side="bottom")
+
         self._footer = tk.Frame(
-            self.root,
-            bg=config.footer_bg,
+            self.root, bg=config.footer_bg,
             height=config.footer_height,
-            highlightthickness=0,
-            bd=0,
+            highlightthickness=0, bd=0,
         )
         self._footer.pack(fill="x", side="bottom")
         self._footer.pack_propagate(False)
 
+        # Re-pack separator after footer so visual order is: content | sep | footer
+        self._footer_sep.pack_forget()
+        self._footer_sep.pack(fill="x", side="bottom", before=self._footer)
+        self._footer.pack(fill="x", side="bottom")
+
         self._badge_label = tk.Label(
-            self._footer,
-            text="",
-            fg=config.text_secondary,
-            bg=config.footer_bg,
-            font=config.font_badge,
+            self._footer, text="", fg=config.text_secondary,
+            bg=config.footer_bg, font=config.font_badge,
         )
         self._badge_label.pack(side="left", padx=config.spacing_lg)
 
         self._clear_btn = tk.Label(
-            self._footer,
-            text=config.string("clear_completed"),
-            fg=config.link_color,
-            bg=config.footer_bg,
-            font=config.font_footer,
-            cursor="hand2",
+            self._footer, text=config.string("clear_completed_zero"),
+            fg=config.link_color, bg=config.footer_bg,
+            font=config.font_footer, cursor="hand2",
         )
-        # Start hidden — shown when there are completed tasks
         self._clear_btn.bind("<Button-1>", lambda _: self._clear_completed())
         self._clear_btn.bind("<Enter>", self._on_clear_hover)
         self._clear_btn.bind("<Leave>", self._on_clear_leave)
 
-        # ─── Entry with placeholder ──────────
+        # ─── Entry ───────────────────────────
         entry_frame = tk.Frame(
-            self.root,
-            bg=config.content_bg,
-            highlightthickness=0,
-            bd=0,
+            self.root, bg=config.content_bg,
+            highlightthickness=0, bd=0,
         )
-        entry_frame.pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_md, config.spacing_sm))
+        entry_frame.pack(
+            fill="x",
+            padx=config.spacing_lg,
+            pady=(config.spacing_md, config.spacing_sm),
+        )
 
         self._task_entry = tk.Entry(
-            entry_frame,
-            bg="#FFFFFF",
-            fg=config.text_placeholder,
-            insertbackground=config.text_primary,
-            font=config.font_body,
-            bd=0,
-            highlightthickness=2,
+            entry_frame, bg="#FFFFFF", fg=config.text_placeholder,
+            insertbackground=config.text_primary, font=config.font_body,
+            bd=0, highlightthickness=2,
             highlightbackground=config.border_color,
             highlightcolor=config.border_focus,
         )
@@ -170,36 +177,77 @@ class FlyNotesApp:
         self._task_entry.bind("<FocusOut>", self._entry_focus_out)
         self._task_entry.bind("<Return>", lambda _: self._add_new_task())
 
-        # ─── Scrollable task list ────────────
-        self._list_canvas = tk.Canvas(
-            self.root,
-            bg=config.content_bg,
-            highlightthickness=0,
-            bd=0,
+        # ─── Separator under entry ───────────
+        tk.Frame(
+            self.root, bg=config.separator_color,
+            height=config.separator_height, bd=0,
+        ).pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_sm, 0))
+
+        # ─── Scrollable task list + scrollbar ─
+        list_container = tk.Frame(
+            self.root, bg=config.content_bg,
+            highlightthickness=0, bd=0,
         )
-        self._scroll_frame = tk.Frame(
-            self._list_canvas,
-            bg=config.content_bg,
-            highlightthickness=0,
+        list_container.pack(fill="both", expand=True)
+
+        # Custom thin scrollbar
+        self._scrollbar = tk.Scrollbar(
+            list_container,
+            orient="vertical",
+            width=config.scrollbar_width,
+            troughcolor=config.scrollbar_track,
+            bg=config.scrollbar_thumb,
+            activebackground=config.scrollbar_thumb,
             bd=0,
-        )
-        self._list_canvas.pack(fill="both", expand=True)
-        self._canvas_win_id = self._list_canvas.create_window(
-            (0, 0),
-            window=self._scroll_frame,
-            anchor="nw",
-            width=config.default_width,
+            highlightthickness=0,
+            relief="flat",
         )
 
-        # ─── Empty state ────────────────────
+        self._list_canvas = tk.Canvas(
+            list_container, bg=config.content_bg,
+            highlightthickness=0, bd=0,
+            yscrollcommand=self._scrollbar_set,
+        )
+        self._scrollbar.config(command=self._list_canvas.yview)
+
+        self._scroll_frame = tk.Frame(
+            self._list_canvas, bg=config.content_bg,
+            highlightthickness=0, bd=0,
+        )
+
+        # Pack canvas (scrollbar shown/hidden dynamically)
+        self._list_canvas.pack(side="left", fill="both", expand=True)
+        self._canvas_win_id = self._list_canvas.create_window(
+            (0, 0), window=self._scroll_frame,
+            anchor="nw", width=config.default_width,
+        )
+
+        # Section headers for grouping
+        self._pending_header = None
+        self._completed_header = None
+        self._completed_sep = None
+
+        # ─── Empty state ─────────────────────
         self._empty_label = tk.Label(
             self._scroll_frame,
             text=config.string("empty_state"),
-            fg=config.empty_state_fg,
-            bg=config.content_bg,
-            font=config.font_empty_hint,
-            pady=config.spacing_xxl,
+            fg=config.empty_state_fg, bg=config.content_bg,
+            font=config.font_empty_hint, pady=config.spacing_xxl,
         )
+        # Track if scrollbar is visible
+        self._scrollbar_visible = False
+
+    def _scrollbar_set(self, first: str, last: str) -> None:
+        """Show scrollbar only when content overflows."""
+        self._scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if self._scrollbar_visible:
+                self._scrollbar.pack_forget()
+                self._scrollbar_visible = False
+        else:
+            if not self._scrollbar_visible:
+                self._scrollbar.pack(side="right", fill="y")
+                self._scrollbar_visible = True
 
     # ── Clear button hover ───────────────────
 
@@ -278,7 +326,7 @@ class FlyNotesApp:
         self._create_task_widget(task)
         self._refresh_footer()
         self._update_empty_state()
-        self._update_canvas()
+        self._repack_tasks()
 
     def _create_task_widget(self, task: Dict[str, Any]) -> TaskItem:
         widget = TaskItem(
@@ -316,11 +364,14 @@ class FlyNotesApp:
         item.destroy()
         self._refresh_footer()
         self._update_empty_state()
-        self._update_canvas()
+        self._repack_tasks()
 
     def _toggle_task(self, item: TaskItem) -> None:
         self.manager.toggle_task(item.task_id)
         self._refresh_footer()
+        # Re-group after toggle if grouping is enabled
+        if config.group_completed:
+            self._repack_tasks()
 
     def _clear_completed(self) -> None:
         count = self.manager.completed_count
@@ -339,7 +390,7 @@ class FlyNotesApp:
             w.destroy()
         self._refresh_footer()
         self._update_empty_state()
-        self._update_canvas()
+        self._repack_tasks()
 
     # ── Drag-and-drop ────────────────────────
 
@@ -390,13 +441,51 @@ class FlyNotesApp:
             self._create_task_widget(task)
         self._refresh_footer()
         self._update_empty_state()
-        self._update_canvas()
+        self._repack_tasks()
 
     def _repack_tasks(self) -> None:
-        for w in self._task_widgets:
+        """Repack all task widgets, optionally grouped by completion status."""
+        # Remove everything from scroll_frame
+        for w in self._scroll_frame.winfo_children():
             w.pack_forget()
-        for w in self._task_widgets:
-            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+        if not self._task_widgets:
+            return
+
+        if config.group_completed:
+            pending = [w for w in self._task_widgets if not w.completed_var.get()]
+            completed = [w for w in self._task_widgets if w.completed_var.get()]
+
+            # Pack pending tasks
+            for w in pending:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+            # Separator + section header for completed
+            if completed and pending:
+                sep = tk.Frame(
+                    self._scroll_frame,
+                    bg=config.separator_color,
+                    height=config.separator_height,
+                    bd=0,
+                )
+                sep.pack(fill="x", padx=config.spacing_xl, pady=(config.spacing_md, config.spacing_xs))
+
+                header = tk.Label(
+                    self._scroll_frame,
+                    text=config.string("section_completed"),
+                    fg=config.text_secondary,
+                    bg=config.content_bg,
+                    font=config.font_section,
+                    anchor="w",
+                )
+                header.pack(fill="x", padx=config.spacing_xl, pady=(0, config.spacing_xs))
+
+            for w in completed:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+        else:
+            for w in self._task_widgets:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
         self._update_canvas()
 
     def _update_canvas(self) -> None:
@@ -421,6 +510,9 @@ class FlyNotesApp:
             self._badge_label.config(text=f"{done} of {total} done")
 
         if done > 0:
+            self._clear_btn.config(
+                text=config.string("clear_completed", count=done)
+            )
             self._clear_btn.pack(side="right", padx=config.spacing_lg)
         else:
             self._clear_btn.pack_forget()

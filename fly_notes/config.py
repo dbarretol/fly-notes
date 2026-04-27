@@ -24,31 +24,34 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "header_bg":            "#B35C00",
         "content_bg":           "#FFF4E6",
         "item_bg":              "#FFFFFF",
-        "item_bg_completed":    "#E8E0D8",        # ← Más oscuro para distinguir
-        "footer_bg":            "#F5EDE3",         # ← Ligeramente diferente del content
+        "item_bg_completed":    "#E8E0D8",
+        "footer_bg":            "#F0E6D8",         # ← Ligeramente más oscuro para separación
+        "separator_color":      "#E0D0C0",         # ← NUEVO: línea divisoria sutil
 
-        # Text — ALL WCAG AA verified
-        "text_primary":         "#2D1810",         # 12.5:1 on white
-        "text_secondary":       "#5C4033",         # 7.2:1 on white
-        "text_completed":       "#6B5B4E",         # 4.72:1 on #E8E0D8
-        "text_on_header":       "#FFFFFF",         # 4.87:1 on #B35C00
-        "text_placeholder":     "#8C7E72",         # 3.82:1 on white
+        # Text
+        "text_primary":         "#2D1810",
+        "text_secondary":       "#5C4033",
+        "text_completed":       "#6B5B4E",
+        "text_on_header":       "#FFFFFF",
+        "text_placeholder":     "#8C7E72",
 
         # Interactive
-        "border_color":         "#D4B896",         # Card borders — softer
+        "border_color":         "#D4B896",
         "border_focus":         "#B35C00",
         "btn_danger_bg":        "#DC3545",
         "btn_danger_hover":     "#C82333",
         "btn_close_hover_bg":   "#FF4500",
         "btn_header_hover_bg":  "#8B4500",
-        "link_color":           "#8B4D00",         # 5.92:1 on footer
+        "link_color":           "#8B4D00",
         "link_hover":           "#B35C00",
 
         # Feedback
         "drag_highlight":       "#FFE0B2",
         "drag_border":          "#B35C00",
-        "checkbox_check":       "#B35C00",         # ← Renombrado para claridad
-        "checkbox_bg":          "#FFFFFF",         # ← Fondo del checkbox
+        "checkbox_check":       "#B35C00",
+        "checkbox_bg":          "#FFFFFF",
+        "checkbox_border":      "#B0977A",         # ← NUEVO: borde más visible para unchecked
+        "checkbox_hover_bg":    "#FFF0E0",         # ← NUEVO: hover suave en checkbox
         "scrollbar_thumb":      "#C4956A",
         "scrollbar_track":      "#FFF4E6",
 
@@ -72,22 +75,25 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
 
     "settings": {
-        "tasks_file":        DEFAULT_TASKS_FILE,
-        "default_width":     320,
-        "default_height":    440,
-        "drag_threshold":    18,
-        "min_width":         240,
-        "min_height":        180,
-        "max_task_length":   300,
-        "item_padding_y":    7,                    # ← Slightly more breathing room
-        "item_padding_x":    10,
-        "header_height":     38,
-        "footer_height":     32,                   # ← NEW: explicit footer height
-        "border_radius":     6,
-        "animation_ms":      150,
-        "confirm_delete":    False,
-        "max_visible_tasks": 100,
-        "checkbox_size":     18,                   # ← NEW: custom checkbox size
+        "tasks_file":           DEFAULT_TASKS_FILE,
+        "default_width":        320,
+        "default_height":       440,
+        "drag_threshold":       18,
+        "min_width":            240,
+        "min_height":           180,
+        "max_task_length":      300,
+        "item_padding_y":       7,
+        "item_padding_x":       10,
+        "header_height":        38,
+        "footer_height":        32,
+        "border_radius":        6,
+        "animation_ms":         150,
+        "confirm_delete":       False,
+        "max_visible_tasks":    100,
+        "checkbox_size":        18,
+        "group_completed":      True,              # ← NUEVO: agrupar completados abajo
+        "separator_height":     1,                 # ← NUEVO
+        "scrollbar_width":      6,                 # ← NUEVO: thin scrollbar
     },
 
     "fonts": {
@@ -97,6 +103,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "footer":       ["Segoe UI", 9],
         "empty_hint":   ["Segoe UI", 10, "italic"],
         "badge":        ["Segoe UI", 8, "bold"],
+        "section":      ["Segoe UI", 8],           # ← NUEVO: section header font
     },
 
     "shortcuts": {
@@ -109,12 +116,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "strings": {
         "app_title":            "Fly Notes",
         "entry_placeholder":    "Add a new task…",
-        "clear_completed":      "Clear completed",
+        "clear_completed":      "Clear completed ({count})",  # ← MEJORADO: muestra cantidad
+        "clear_completed_zero": "Clear completed",
         "empty_state":          "No tasks yet — type above to start!",
         "confirm_delete_title": "Delete Task",
         "confirm_delete_msg":   "Remove this task permanently?",
         "confirm_clear_title":  "Clear Completed",
         "confirm_clear_msg":    "Remove {count} completed task(s)?",
+        "section_pending":      "TO DO",           # ← NUEVO
+        "section_completed":    "COMPLETED",        # ← NUEVO
     },
 }
 
@@ -308,7 +318,12 @@ class Config:
     def scrollbar_track(self) -> str: return self._data["colors"]["scrollbar_track"]
     @property
     def empty_state_fg(self) -> str: return self._data["colors"]["empty_state_fg"]
-
+    @property
+    def separator_color(self) -> str: return self._data["colors"]["separator_color"]
+    @property
+    def checkbox_border(self) -> str: return self._data["colors"]["checkbox_border"]
+    @property
+    def checkbox_hover_bg(self) -> str: return self._data["colors"]["checkbox_hover_bg"]
     # -- Transparency --------------------------
     @property
     def active_alpha(self) -> float: return float(self._data["transparency"]["active"])
@@ -360,7 +375,12 @@ class Config:
     def max_visible_tasks(self) -> int: return int(self._data["settings"].get("max_visible_tasks", 100))
     @property
     def checkbox_size(self) -> int: return int(self._data["settings"].get("checkbox_size", 18))
-
+    @property
+    def group_completed(self) -> bool: return bool(self._data["settings"].get("group_completed", True))
+    @property
+    def separator_height(self) -> int: return int(self._data["settings"].get("separator_height", 1))
+    @property
+    def scrollbar_width(self) -> int: return int(self._data["settings"].get("scrollbar_width", 6))
     # -- Fonts ---------------------------------
     @property
     def font_header(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["header"])
@@ -374,7 +394,8 @@ class Config:
     def font_empty_hint(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["empty_hint"])
     @property
     def font_badge(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["badge"])
-
+    @property
+    def font_section(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["section"])
     # -- Shortcuts -----------------------------
     @property
     def shortcut_new_task(self) -> str: return self._data["shortcuts"]["new_task"]
