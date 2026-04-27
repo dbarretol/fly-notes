@@ -8,6 +8,7 @@ authors = [
 dependencies = [
     "pyinstaller",
     "pytest",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]
