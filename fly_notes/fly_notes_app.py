@@ -1,16 +1,9 @@
 """
-Main orchestrator — wires UI components, data layer and window management.
-
-UX enhancements in this version
-────────────────────────────────
-* **Placeholder text** in the entry field with proper focus/blur behaviour.
-* **Empty state** illustration when no tasks exist.
-* **Completion badge** ("2 of 5 done") in the footer for progress awareness.
-* **Hover-reveal delete** — ✕ buttons are hidden until the row is hovered.
-* **Keyboard shortcuts** for power users (Ctrl+N, Ctrl+D, Escape, Ctrl+L).
-* **Confirmation dialog** for "Clear Completed" (shows count).
-* **Scroll-wheel** support propagated to all child widgets.
-* **Focus ring** on the entry field for accessibility.
+Main orchestrator with full UX polish:
+* Placeholder entry, empty state, progress badge
+* Keyboard shortcuts, mousewheel scroll
+* Confirmation dialogs, hover-reveal delete
+* Proper footer rendering with explicit height
 """
 
 from __future__ import annotations
@@ -36,7 +29,12 @@ class FlyNotesApp:
         )
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        self.root.config(bg=config.content_bg)
+        # ── FIX: Remove root border artifacts ──
+        self.root.config(
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
+        )
         self.root.attributes("-alpha", config.active_alpha)
 
         # Data
@@ -53,8 +51,6 @@ class FlyNotesApp:
         # Drag state
         self._dragging_item: Optional[TaskItem] = None
         self._drag_start_y: int = 0
-
-        # Widget list
         self._task_widgets: List[TaskItem] = []
 
         self._build_ui()
@@ -72,6 +68,8 @@ class FlyNotesApp:
             self.root,
             bg=config.header_bg,
             height=config.header_height,
+            highlightthickness=0,
+            bd=0,
         )
         self._header.pack(fill="x", side="top")
         self._header.pack_propagate(False)
@@ -85,19 +83,13 @@ class FlyNotesApp:
         )
         self._title_lbl.pack(side="left", padx=config.spacing_lg, pady=config.spacing_md)
 
-        # Close button with hover
+        # Close button
         self._close_btn = tk.Button(
-            self._header,
-            text="✕",
-            command=self._on_close,
-            bg=config.header_bg,
-            fg=config.text_on_header,
-            bd=0,
-            activebackground=config.btn_close_hover_bg,
-            activeforeground="#FFFFFF",
-            padx=config.spacing_lg,
-            font=config.font_header,
-            cursor="hand2",
+            self._header, text="✕", command=self._on_close,
+            bg=config.header_bg, fg=config.text_on_header,
+            bd=0, activebackground=config.btn_close_hover_bg,
+            activeforeground="#FFFFFF", padx=config.spacing_lg,
+            font=config.font_header, cursor="hand2", relief="flat",
         )
         self._close_btn.pack(side="right", fill="y")
         self._close_btn.bind("<Enter>",
@@ -105,19 +97,13 @@ class FlyNotesApp:
         self._close_btn.bind("<Leave>",
             lambda e: self._close_btn.config(bg=config.header_bg))
 
-        # Minimize button with hover
+        # Minimize button
         self._min_btn = tk.Button(
-            self._header,
-            text="—",
-            command=self.window_ctrl.minimize_window,
-            bg=config.header_bg,
-            fg=config.text_on_header,
-            bd=0,
-            activebackground=config.btn_header_hover_bg,
-            activeforeground="#FFFFFF",
-            padx=config.spacing_lg,
-            font=config.font_header,
-            cursor="hand2",
+            self._header, text="—", command=self.window_ctrl.minimize_window,
+            bg=config.header_bg, fg=config.text_on_header,
+            bd=0, activebackground=config.btn_header_hover_bg,
+            activeforeground="#FFFFFF", padx=config.spacing_lg,
+            font=config.font_header, cursor="hand2", relief="flat",
         )
         self._min_btn.pack(side="right", fill="y")
         self._min_btn.bind("<Enter>",
@@ -125,9 +111,47 @@ class FlyNotesApp:
         self._min_btn.bind("<Leave>",
             lambda e: self._min_btn.config(bg=config.header_bg))
 
+        # ─── Footer (PACK BEFORE canvas so it claims space) ──
+        self._footer = tk.Frame(
+            self.root,
+            bg=config.footer_bg,
+            height=config.footer_height,
+            highlightthickness=0,
+            bd=0,
+        )
+        self._footer.pack(fill="x", side="bottom")
+        self._footer.pack_propagate(False)
+
+        self._badge_label = tk.Label(
+            self._footer,
+            text="",
+            fg=config.text_secondary,
+            bg=config.footer_bg,
+            font=config.font_badge,
+        )
+        self._badge_label.pack(side="left", padx=config.spacing_lg)
+
+        self._clear_btn = tk.Label(
+            self._footer,
+            text=config.string("clear_completed"),
+            fg=config.link_color,
+            bg=config.footer_bg,
+            font=config.font_footer,
+            cursor="hand2",
+        )
+        # Start hidden — shown when there are completed tasks
+        self._clear_btn.bind("<Button-1>", lambda _: self._clear_completed())
+        self._clear_btn.bind("<Enter>", self._on_clear_hover)
+        self._clear_btn.bind("<Leave>", self._on_clear_leave)
+
         # ─── Entry with placeholder ──────────
-        entry_frame = tk.Frame(self.root, bg=config.content_bg)
-        entry_frame.pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_lg, config.spacing_md))
+        entry_frame = tk.Frame(
+            self.root,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
+        )
+        entry_frame.pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_md, config.spacing_sm))
 
         self._task_entry = tk.Entry(
             entry_frame,
@@ -142,7 +166,6 @@ class FlyNotesApp:
         )
         self._task_entry.pack(fill="x", ipady=config.spacing_md)
         self._task_entry.insert(0, config.string("entry_placeholder"))
-
         self._task_entry.bind("<FocusIn>", self._entry_focus_in)
         self._task_entry.bind("<FocusOut>", self._entry_focus_out)
         self._task_entry.bind("<Return>", lambda _: self._add_new_task())
@@ -152,10 +175,15 @@ class FlyNotesApp:
             self.root,
             bg=config.content_bg,
             highlightthickness=0,
+            bd=0,
         )
-        self._scroll_frame = tk.Frame(self._list_canvas, bg=config.content_bg)
+        self._scroll_frame = tk.Frame(
+            self._list_canvas,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
+        )
         self._list_canvas.pack(fill="both", expand=True)
-
         self._canvas_win_id = self._list_canvas.create_window(
             (0, 0),
             window=self._scroll_frame,
@@ -173,35 +201,19 @@ class FlyNotesApp:
             pady=config.spacing_xxl,
         )
 
-        # ─── Footer ─────────────────────────
-        self._footer = tk.Frame(self.root, bg=config.footer_bg, pady=config.spacing_sm)
-        self._footer.pack(fill="x", side="bottom")
+    # ── Clear button hover ───────────────────
 
-        # Progress badge (left)
-        self._badge_label = tk.Label(
-            self._footer,
-            text="",
-            fg=config.text_secondary,
-            bg=config.footer_bg,
-            font=config.font_badge,
+    def _on_clear_hover(self, event: tk.Event = None) -> None:
+        self._clear_btn.config(
+            fg=config.link_hover,
+            font=(*config.font_footer[:2], "underline"),
         )
-        self._badge_label.pack(side="left", padx=config.spacing_lg)
 
-        # Clear completed link (right)
-        self._clear_btn = tk.Label(
-            self._footer,
-            text=config.string("clear_completed"),
+    def _on_clear_leave(self, event: tk.Event = None) -> None:
+        self._clear_btn.config(
             fg=config.link_color,
-            bg=config.footer_bg,
             font=config.font_footer,
-            cursor="hand2",
         )
-        self._clear_btn.pack(side="right", padx=config.spacing_lg)
-        self._clear_btn.bind("<Button-1>", lambda _: self._clear_completed())
-        self._clear_btn.bind("<Enter>",
-            lambda e: self._clear_btn.config(fg=config.link_hover, font=(*config.font_footer[:2], "underline")))
-        self._clear_btn.bind("<Leave>",
-            lambda e: self._clear_btn.config(fg=config.link_color, font=config.font_footer))
 
     # ── Placeholder behaviour ────────────────
 
@@ -216,31 +228,24 @@ class FlyNotesApp:
             self._task_entry.insert(0, config.string("entry_placeholder"))
             self._task_entry.config(fg=config.text_placeholder)
 
-    # ── Event bindings ───────────────────────
+    # ── Events ───────────────────────────────
 
     def _bind_events(self) -> None:
-        # Window drag
         self.window_ctrl.bind_drag(self._header)
         self.window_ctrl.bind_drag(self._title_lbl)
 
-        # Transparency on focus
-        self.root.bind(
-            "<FocusIn>",
-            lambda _: self.root.attributes("-alpha", config.active_alpha),
-        )
-        self.root.bind(
-            "<FocusOut>",
-            lambda _: self.root.attributes("-alpha", config.inactive_alpha),
-        )
-        self.root.bind(
-            "<Map>", lambda _: self.root.attributes("-topmost", True)
-        )
+        self.root.bind("<FocusIn>",
+            lambda _: self.root.attributes("-alpha", config.active_alpha))
+        self.root.bind("<FocusOut>",
+            lambda _: self.root.attributes("-alpha", config.inactive_alpha))
+        self.root.bind("<Map>",
+            lambda _: self.root.attributes("-topmost", True))
 
-        # Mousewheel scroll
-        for widget in (self._list_canvas, self._scroll_frame):
-            widget.bind("<MouseWheel>", self._on_mousewheel)
-            widget.bind("<Button-4>", self._on_mousewheel)
-            widget.bind("<Button-5>", self._on_mousewheel)
+        # Mousewheel
+        for w in (self._list_canvas, self._scroll_frame):
+            w.bind("<MouseWheel>", self._on_mousewheel)
+            w.bind("<Button-4>", self._on_mousewheel)
+            w.bind("<Button-5>", self._on_mousewheel)
 
         # Keyboard shortcuts
         self.root.bind(config.shortcut_close, lambda _: self._on_close())
@@ -289,7 +294,7 @@ class FlyNotesApp:
         )
         widget.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
-        # Propagate scroll to children
+        # Propagate scroll
         for child in (widget, widget.label, widget.check, widget.delete_btn):
             child.bind("<MouseWheel>", self._on_mousewheel)
             child.bind("<Button-4>", self._on_mousewheel)
@@ -363,8 +368,7 @@ class FlyNotesApp:
         if y < self._drag_start_y - config.drag_threshold and idx > 0:
             if self.manager.reorder_tasks(idx, idx - 1):
                 self._task_widgets[idx], self._task_widgets[idx - 1] = (
-                    self._task_widgets[idx - 1],
-                    self._task_widgets[idx],
+                    self._task_widgets[idx - 1], self._task_widgets[idx],
                 )
                 self._repack_tasks()
                 self._drag_start_y = y
@@ -374,13 +378,12 @@ class FlyNotesApp:
         ):
             if self.manager.reorder_tasks(idx, idx + 1):
                 self._task_widgets[idx], self._task_widgets[idx + 1] = (
-                    self._task_widgets[idx + 1],
-                    self._task_widgets[idx],
+                    self._task_widgets[idx + 1], self._task_widgets[idx],
                 )
                 self._repack_tasks()
                 self._drag_start_y = y
 
-    # ── UI State helpers ─────────────────────
+    # ── UI State ─────────────────────────────
 
     def _load_initial_tasks(self) -> None:
         for task in self.manager.tasks:
@@ -397,48 +400,40 @@ class FlyNotesApp:
         self._update_canvas()
 
     def _update_canvas(self) -> None:
-        """Recalculate scroll region after any list mutation."""
         self._scroll_frame.update_idletasks()
         bbox = self._list_canvas.bbox("all")
         if bbox:
             self._list_canvas.config(scrollregion=bbox)
 
     def _update_empty_state(self) -> None:
-        """Show/hide the empty-state hint based on task count."""
         if not self._task_widgets:
             self._empty_label.pack(fill="x", padx=config.spacing_xl)
         else:
             self._empty_label.pack_forget()
 
     def _refresh_footer(self) -> None:
-        """Update the progress badge and clear-button visibility."""
         total = self.manager.task_count
         done = self.manager.completed_count
 
-        # Badge text
         if total == 0:
             self._badge_label.config(text="")
         else:
             self._badge_label.config(text=f"{done} of {total} done")
 
-        # Show/hide clear button based on whether completed tasks exist
         if done > 0:
             self._clear_btn.pack(side="right", padx=config.spacing_lg)
         else:
             self._clear_btn.pack_forget()
 
     def _on_window_resize(self) -> None:
-        """Adjust canvas inner frame width to match new window width."""
         new_w = self.root.winfo_width()
         self._list_canvas.itemconfigure(self._canvas_win_id, width=new_w)
         self._update_canvas()
 
     def _handle_error(self, message: str) -> None:
-        """Surface data-layer errors to the user."""
         messagebox.showerror(config.string("app_title"), message)
 
     def _on_close(self) -> None:
-        """Flush pending saves and tear down gracefully."""
         try:
             self.manager.flush()
         except Exception:

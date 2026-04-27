@@ -1,12 +1,10 @@
 """
-Self-contained task-row widget with full UX polish:
-
-* Hover states on the row and on the delete button.
-* Distinct visual treatment for completed vs pending items.
-* Smooth background transitions during drag.
-* Keyboard-accessible delete (focused → Enter/Space).
-* Tooltip on truncated text.
-* Semantic colour tokens from config.
+Self-contained task-row widget with:
+* Custom-drawn Canvas checkbox (replaces ugly native Checkbutton)
+* Hover-reveal delete button
+* Distinct completed vs pending visual states
+* Keyboard-accessible delete
+* Drag-and-drop callbacks
 """
 
 from __future__ import annotations
@@ -17,8 +15,121 @@ from typing import Callable, Optional
 from .config import config
 
 
+class CustomCheckbox(tk.Canvas):
+    """
+    A canvas-drawn checkbox that replaces the native Tkinter Checkbutton.
+    
+    Renders a rounded-ish box with an animated checkmark.
+    Visually consistent across all platforms.
+    """
+
+    def __init__(
+        self,
+        master: tk.Widget,
+        size: int = 18,
+        checked: bool = False,
+        command: Optional[Callable[[], None]] = None,
+        bg: str = "#FFFFFF",
+        check_color: str = "#B35C00",
+        border_color: str = "#D4B896",
+        hover_color: str = "#FFF4E6",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            master,
+            width=size,
+            height=size,
+            bg=bg,
+            highlightthickness=0,
+            bd=0,
+            cursor="hand2",
+            **kwargs,
+        )
+        self._size = size
+        self._checked = checked
+        self._command = command
+        self._bg = bg
+        self._check_color = check_color
+        self._border_color = border_color
+        self._hover_color = hover_color
+        self._is_hovered = False
+
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+
+        self._draw()
+
+    @property
+    def checked(self) -> bool:
+        return self._checked
+
+    @checked.setter
+    def checked(self, value: bool) -> None:
+        self._checked = value
+        self._draw()
+
+    def _on_click(self, event: tk.Event = None) -> None:
+        self._checked = not self._checked
+        self._draw()
+        if self._command:
+            self._command()
+
+    def _on_enter(self, event: tk.Event = None) -> None:
+        self._is_hovered = True
+        self._draw()
+
+    def _on_leave(self, event: tk.Event = None) -> None:
+        self._is_hovered = False
+        self._draw()
+
+    def _draw(self) -> None:
+        self.delete("all")
+        s = self._size
+        pad = 1
+        r = 3  # corner radius approximation
+
+        # Background fill
+        if self._checked:
+            fill = self._check_color
+            outline = self._check_color
+        elif self._is_hovered:
+            fill = self._hover_color
+            outline = self._check_color
+        else:
+            fill = self._bg
+            outline = self._border_color
+
+        # Rounded rectangle (approximated with polygon)
+        self.create_rectangle(
+            pad, pad, s - pad, s - pad,
+            fill=fill,
+            outline=outline,
+            width=1.5,
+        )
+
+        # Checkmark
+        if self._checked:
+            # Draw a white checkmark
+            cx, cy = s / 2, s / 2
+            self.create_line(
+                cx - 4, cy,
+                cx - 1, cy + 3,
+                fill="white", width=2, capstyle="round",
+            )
+            self.create_line(
+                cx - 1, cy + 3,
+                cx + 4, cy - 3,
+                fill="white", width=2, capstyle="round",
+            )
+
+    def set_canvas_bg(self, color: str) -> None:
+        """Update the canvas background (for row hover propagation)."""
+        self.config(bg=color)
+
+
 class TaskItem(tk.Frame):
-    """One task row: checkbox │ label │ delete button."""
+    """One task row: custom checkbox │ label │ delete button."""
 
     def __init__(
         self,
@@ -59,19 +170,18 @@ class TaskItem(tk.Frame):
         self._is_hovered = False
         self._is_dragging = False
 
-        # ── Checkbox ────────────────────────
-        self.check = tk.Checkbutton(
+        # ── Custom Checkbox ─────────────────
+        self.check = CustomCheckbox(
             self,
-            variable=self.completed_var,
+            size=config.checkbox_size,
+            checked=completed,
             command=self._handle_status_change,
             bg=config.item_bg,
-            activebackground=config.item_bg,
-            selectcolor=config.checkbox_accent,
-            fg=config.text_primary,
-            cursor="hand2",
-            takefocus=False,
+            check_color=config.checkbox_check,
+            border_color=config.border_color,
+            hover_color=config.drag_highlight_color,
         )
-        self.check.pack(side="left", padx=(0, config.spacing_sm))
+        self.check.pack(side="left", padx=(0, config.spacing_md))
 
         # ── Label ───────────────────────────
         self.label = tk.Label(
@@ -81,11 +191,10 @@ class TaskItem(tk.Frame):
             bg=config.item_bg,
             font=config.font_body,
             anchor="w",
-            wraplength=0,   # No wrap — truncation handled by layout
         )
         self.label.pack(side="left", fill="x", expand=True)
 
-        # ── Delete button (hidden until hover) ──
+        # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
             self,
             text="✕",
@@ -98,16 +207,14 @@ class TaskItem(tk.Frame):
             cursor="hand2",
             font=config.font_footer,
             width=2,
+            relief="flat",
             takefocus=True,
         )
-        # Start hidden — revealed on hover
-        self.delete_btn.pack(side="right", padx=(config.spacing_sm, 0))
-        self.delete_btn.pack_forget()
+        # Starts hidden
+        self._delete_visible = False
 
         # ── Hover bindings ──────────────────
-        self.bind("<Enter>", self._on_enter)
-        self.bind("<Leave>", self._on_leave)
-        for w in (self.label, self.check):
+        for w in (self, self.label, self.check):
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
         self.delete_btn.bind("<Enter>", self._on_delete_btn_enter)
@@ -119,53 +226,71 @@ class TaskItem(tk.Frame):
             widget.bind("<B1-Motion>", self._do_drag)
             widget.bind("<ButtonRelease-1>", self._stop_drag)
 
-        # ── Keyboard on delete btn ──────────
+        # ── Keyboard ────────────────────────
         self.delete_btn.bind("<Return>", lambda e: self._handle_delete())
         self.delete_btn.bind("<space>", lambda e: self._handle_delete())
 
-        # Initial style
         self._update_style()
 
-    # ── Hover management ─────────────────────
+    # ── Hover ────────────────────────────────
 
     def _on_enter(self, event: tk.Event = None) -> None:
         if self._is_dragging:
             return
         self._is_hovered = True
-        self.delete_btn.pack(side="right", padx=(config.spacing_sm, 0))
+        self._show_delete_btn()
         if not self.completed_var.get():
-            self._set_row_bg(config.drag_highlight_color)   # Subtle warm hover
+            self._set_row_bg(config.drag_highlight_color)
         self.config(cursor="hand2")
 
     def _on_leave(self, event: tk.Event = None) -> None:
         if self._is_dragging:
             return
-        # Verify the pointer actually left the frame (not just moved to a child)
         try:
             x, y = self.winfo_pointerxy()
-            widget_under = self.winfo_containing(x, y)
-            if widget_under and (widget_under is self or widget_under.master is self):
+            w = self.winfo_containing(x, y)
+            if w and (w is self or str(w).startswith(str(self))):
                 return
         except tk.TclError:
             pass
         self._is_hovered = False
-        self.delete_btn.pack_forget()
+        self._hide_delete_btn()
         self._apply_base_bg()
         self.config(cursor="")
 
     def _on_delete_btn_enter(self, event: tk.Event = None) -> None:
-        self.delete_btn.config(
-            bg=config.btn_danger_bg,
-            fg="#FFFFFF",
-        )
+        self._is_hovered = True  # Keep parent hover alive
+        self.delete_btn.config(bg=config.btn_danger_bg, fg="#FFFFFF")
 
     def _on_delete_btn_leave(self, event: tk.Event = None) -> None:
         bg = self._current_base_bg()
         self.delete_btn.config(bg=bg, fg=config.text_secondary)
+        # Check if we truly left the row
+        try:
+            x, y = self.winfo_pointerxy()
+            w = self.winfo_containing(x, y)
+            if not w or not str(w).startswith(str(self)):
+                self._is_hovered = False
+                self._hide_delete_btn()
+                self._apply_base_bg()
+        except tk.TclError:
+            pass
 
-    # ── Status / style ───────────────────────
+    def _show_delete_btn(self) -> None:
+        if not self._delete_visible:
+            self.delete_btn.pack(side="right", padx=(config.spacing_sm, 0))
+            self._delete_visible = True
+
+    def _hide_delete_btn(self) -> None:
+        if self._delete_visible:
+            self.delete_btn.pack_forget()
+            self._delete_visible = False
+
+    # ── Status ───────────────────────────────
 
     def _handle_status_change(self) -> None:
+        new_state = self.check.checked
+        self.completed_var.set(new_state)
         self._update_style()
         if self._on_status_change:
             self._on_status_change(self)
@@ -175,30 +300,21 @@ class TaskItem(tk.Frame):
             self._on_delete(self)
 
     def _update_style(self) -> None:
-        """Apply the correct visual state for completed / pending."""
         if self.completed_var.get():
-            self.label.config(
-                font=config.font_body_strike,
-                fg=config.text_completed,
-            )
-            self._apply_base_bg()
+            self.label.config(font=config.font_body_strike, fg=config.text_completed)
+            self.check.checked = True
         else:
-            self.label.config(
-                font=config.font_body,
-                fg=config.text_primary,
-            )
-            self._apply_base_bg()
+            self.label.config(font=config.font_body, fg=config.text_primary)
+            self.check.checked = False
+        self._apply_base_bg()
 
     def _current_base_bg(self) -> str:
-        """Return the non-hover, non-drag background for current state."""
-        if self.completed_var.get():
-            return config.item_bg_completed
-        return config.item_bg
+        return config.item_bg_completed if self.completed_var.get() else config.item_bg
 
     def _apply_base_bg(self) -> None:
         self._set_row_bg(self._current_base_bg())
 
-    # ── Drag handlers ────────────────────────
+    # ── Drag ─────────────────────────────────
 
     def _start_drag(self, event: tk.Event) -> None:
         self._is_dragging = True
@@ -213,28 +329,23 @@ class TaskItem(tk.Frame):
         self._is_dragging = False
         if self._on_drag_stop:
             self._on_drag_stop(self, event)
-        # Re-evaluate hover after drag ends
         if not self._is_hovered:
             self._apply_base_bg()
 
     # ── Public helpers ───────────────────────
 
     def set_bg(self, color: str) -> None:
-        """External control of row background (used by parent during drag)."""
         self._set_row_bg(color)
 
     def set_drag_active(self, active: bool) -> None:
-        """Visual cue: highlight border when this item is being dragged."""
         if active:
             self.config(highlightbackground=config.drag_border, highlightthickness=2)
         else:
             self.config(highlightbackground=config.border_color, highlightthickness=1)
 
     def _set_row_bg(self, color: str) -> None:
-        """Propagate background to all child widgets."""
-        for w in (self, self.label, self.check):
+        for w in (self, self.label):
             w.config(bg=color)
-        self.check.config(activebackground=color)
-        # Only update delete_btn bg if it's not in its own hover state
-        if not self.delete_btn.cget("bg") == config.btn_danger_bg:
+        self.check.set_canvas_bg(color)
+        if self._delete_visible and self.delete_btn.cget("bg") != config.btn_danger_bg:
             self.delete_btn.config(bg=color)
