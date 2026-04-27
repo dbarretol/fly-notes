@@ -9,14 +9,15 @@ import copy
 import json
 import logging
 import os
-from typing import Any, Dict, Tuple
+from pathlib import Path
+from typing import Any, Dict, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
-_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(_PACKAGE_DIR)
-CONFIG_FILE = os.path.join(_PROJECT_ROOT, "config.json")
-DEFAULT_TASKS_FILE = os.path.join(_PROJECT_ROOT, "tasks.json")
+_PACKAGE_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _PACKAGE_DIR.parent
+CONFIG_FILE = _PROJECT_ROOT / "config.json"
+DEFAULT_TASKS_FILE = _PROJECT_ROOT / "tasks.json"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "colors": {
@@ -25,8 +26,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "content_bg":           "#FFF4E6",
         "item_bg":              "#FFFFFF",
         "item_bg_completed":    "#E8E0D8",
-        "footer_bg":            "#F0E6D8",         # ← Ligeramente más oscuro para separación
-        "separator_color":      "#E0D0C0",         # ← NUEVO: línea divisoria sutil
+        "footer_bg":            "#F0E6D8",
+        "separator_color":      "#E0D0C0",
 
         # Text
         "text_primary":         "#2D1810",
@@ -50,8 +51,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "drag_border":          "#B35C00",
         "checkbox_check":       "#B35C00",
         "checkbox_bg":          "#FFFFFF",
-        "checkbox_border":      "#B0977A",         # ← NUEVO: borde más visible para unchecked
-        "checkbox_hover_bg":    "#FFF0E0",         # ← NUEVO: hover suave en checkbox
+        "checkbox_border":      "#B0977A",
+        "checkbox_hover_bg":    "#FFF0E0",
         "scrollbar_thumb":      "#C4956A",
         "scrollbar_track":      "#FFF4E6",
 
@@ -75,7 +76,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
 
     "settings": {
-        "tasks_file":           DEFAULT_TASKS_FILE,
+        "tasks_file":           str(DEFAULT_TASKS_FILE),
         "default_width":        320,
         "default_height":       440,
         "drag_threshold":       18,
@@ -91,9 +92,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "confirm_delete":       False,
         "max_visible_tasks":    100,
         "checkbox_size":        18,
-        "group_completed":      True,              # ← NUEVO: agrupar completados abajo
-        "separator_height":     1,                 # ← NUEVO
-        "scrollbar_width":      6,                 # ← NUEVO: thin scrollbar
+        "group_completed":      True,
+        "separator_height":     1,
+        "scrollbar_width":      6,
     },
 
     "fonts": {
@@ -103,7 +104,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "footer":       ["Segoe UI", 9],
         "empty_hint":   ["Segoe UI", 10, "italic"],
         "badge":        ["Segoe UI", 8, "bold"],
-        "section":      ["Segoe UI", 8],           # ← NUEVO: section header font
+        "section":      ["Segoe UI", 8],
     },
 
     "shortcuts": {
@@ -123,19 +124,41 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "confirm_delete_msg":   "Remove this task permanently?",
         "confirm_clear_title":  "Clear Completed",
         "confirm_clear_msg":    "Remove {count} completed task(s)?",
-        "section_pending":      "To Do ({count})",        # ← Title case + counter
-        "section_completed":    "Completed ({count})",    # ← Title case + counter
+        "section_pending":      "To Do ({count})",
+        "section_completed":    "Completed ({count})",
+        "badge_format":         "{done} of {total} done",
+        "btn_close":            "✕",
+        "btn_minimize":         "—",
     },
 }
 
 
 # ──────────────────────────────────────────────
+# Known keys per section (for deep-merge filtering)
+# ──────────────────────────────────────────────
+
+def _known_keys() -> Dict[str, Set[str]]:
+    """Return the set of valid keys for each top-level section."""
+    return {section: set(values.keys()) for section, values in DEFAULT_CONFIG.items()}
+
+
+_KNOWN_KEYS = _known_keys()
+
+
+# ──────────────────────────────────────────────
 # Contrast validation (WCAG AA)
 # ──────────────────────────────────────────────
-def _hex_to_rgb(hex_color: str) -> tuple:
+
+def _hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
+    """Convert a hex colour (#RGB, #RRGGBB, #RRGGBBAA) to (r, g, b).
+    Alpha channel is stripped if present."""
     h = hex_color.lstrip("#")
     if len(h) == 3:
         h = "".join(c * 2 for c in h)
+    elif len(h) == 8:
+        h = h[:6]  # Strip alpha channel explicitly
+    if len(h) != 6:
+        raise ValueError(f"Cannot parse colour: {hex_color!r}")
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
 
@@ -153,7 +176,7 @@ def _contrast_ratio(fg: str, bg: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-_CONTRAST_PAIRS = [
+_CONTRAST_PAIRS: list[Tuple[str, str, float]] = [
     ("text_primary",     "item_bg",           4.5),
     ("text_completed",   "item_bg_completed", 4.5),
     ("text_on_header",   "header_bg",         4.5),
@@ -188,6 +211,9 @@ def _validate_contrast(colors: Dict[str, str]) -> None:
         fg, bg = colors.get(fg_key), colors.get(bg_key)
         if not fg or not bg:
             continue
+        # Skip colours with alpha — luminance calc is unreliable
+        if len(fg.lstrip("#")) == 8 or len(bg.lstrip("#")) == 8:
+            continue
         try:
             ratio = _contrast_ratio(fg, bg)
             if ratio < min_ratio:
@@ -212,12 +238,23 @@ def _validate_settings(settings: Dict[str, Any]) -> None:
         "min_width", "min_height", "max_task_length",
         "item_padding_y", "item_padding_x", "header_height",
         "footer_height", "border_radius", "animation_ms",
-        "max_visible_tasks", "checkbox_size",
+        "max_visible_tasks", "checkbox_size", "separator_height",
+        "scrollbar_width",
     )
     for key in int_keys:
         val = settings.get(key)
         if val is not None and (not isinstance(val, int) or val < 0):
             raise ValueError(f"settings.{key}: must be a positive int, got {val!r}")
+
+    bool_keys = ("confirm_delete", "group_completed")
+    for key in bool_keys:
+        val = settings.get(key)
+        if val is not None and not isinstance(val, bool):
+            raise ValueError(f"settings.{key}: must be a bool, got {val!r}")
+
+    tf = settings.get("tasks_file")
+    if tf is not None and not isinstance(tf, str):
+        raise ValueError(f"settings.tasks_file: must be a string path, got {tf!r}")
 
 
 def _validate_fonts(fonts: Dict[str, list]) -> None:
@@ -226,21 +263,66 @@ def _validate_fonts(fonts: Dict[str, list]) -> None:
             raise ValueError(f"fonts.{key}: expected [family, size, ...], got {val!r}")
 
 
+# ──────────────────────────────────────────────
+# Config class — uses __getattr__ to eliminate DRY violation
+# ──────────────────────────────────────────────
+
+# Map from property name → (section, key, cast)
+# This is built automatically; only special-name mappings are listed here.
+_PROPERTY_ALIASES: Dict[str, Tuple[str, str]] = {
+    # Aliases where property name ≠ key name
+    "drag_highlight_color": ("colors", "drag_highlight"),
+    "active_alpha":         ("transparency", "active"),
+    "inactive_alpha":       ("transparency", "inactive"),
+}
+
+# Section-level prefixes for auto-resolution
+_SECTION_PREFIXES: Dict[str, Tuple[str, ...]] = {
+    "colors":       (),
+    "transparency": (),
+    "settings":     (),
+    "shortcuts":    (),
+}
+
+_SPACING_PREFIX = "spacing_"
+_FONT_PREFIX = "font_"
+_SHORTCUT_PREFIX = "shortcut_"
+
+
 class Config:
-    """Immutable-after-load application configuration."""
+    """Immutable-after-load application configuration.
+
+    Properties are resolved dynamically via ``__getattr__`` to eliminate
+    the ~80-property boilerplate.  Attribute names follow these conventions:
+
+    - ``config.<color_key>``        → ``_data["colors"][key]`` (str)
+    - ``config.spacing_<key>``      → ``_data["spacing"][key]`` (int)
+    - ``config.font_<key>``         → ``_data["fonts"][key]``   (tuple)
+    - ``config.shortcut_<key>``     → ``_data["shortcuts"][key]``(str)
+    - ``config.<settings_key>``     → ``_data["settings"][key]``
+    - ``config.active_alpha``       → ``_data["transparency"]["active"]``
+    - ``config.inactive_alpha``     → ``_data["transparency"]["inactive"]``
+    - ``config.drag_highlight_color`` → alias for ``drag_highlight``
+    """
 
     def __init__(self) -> None:
         self._data: Dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
         self._load()
+        # Pre-build a lookup cache for __getattr__
+        self._attr_cache: Dict[str, Any] = {}
+
+    # ── Loading ──────────────────────────────
 
     def _load(self) -> None:
-        if not os.path.exists(CONFIG_FILE):
+        if not CONFIG_FILE.exists():
             logger.info("No user config at %s — using defaults", CONFIG_FILE)
             self._post_validate()
             return
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
                 user_cfg = json.load(fh)
+            if not isinstance(user_cfg, dict):
+                raise TypeError(f"Config root must be a dict, got {type(user_cfg).__name__}")
             self._deep_merge(self._data, user_cfg)
             self._validate_structure()
             self._post_validate()
@@ -260,153 +342,91 @@ class Config:
 
     @staticmethod
     def _deep_merge(base: dict, override: dict) -> dict:
+        """Recursively merge *override* into *base*, ignoring unknown keys."""
         for key, value in override.items():
+            if key not in base:
+                logger.warning("Ignoring unknown config key: %r", key)
+                continue
             if isinstance(value, dict) and isinstance(base.get(key), dict):
+                # Filter unknown sub-keys
+                known = _KNOWN_KEYS.get(key)
+                if known is not None:
+                    unknown = set(value.keys()) - known
+                    for uk in unknown:
+                        logger.warning("Ignoring unknown config key: %s.%s", key, uk)
+                    value = {k: v for k, v in value.items() if k in known}
                 Config._deep_merge(base[key], value)
             else:
                 base[key] = value
         return base
 
-    # -- Colours -------------------------------
-    @property
-    def header_bg(self) -> str: return self._data["colors"]["header_bg"]
-    @property
-    def content_bg(self) -> str: return self._data["colors"]["content_bg"]
-    @property
-    def item_bg(self) -> str: return self._data["colors"]["item_bg"]
-    @property
-    def item_bg_completed(self) -> str: return self._data["colors"]["item_bg_completed"]
-    @property
-    def footer_bg(self) -> str: return self._data["colors"]["footer_bg"]
-    @property
-    def text_primary(self) -> str: return self._data["colors"]["text_primary"]
-    @property
-    def text_secondary(self) -> str: return self._data["colors"]["text_secondary"]
-    @property
-    def text_completed(self) -> str: return self._data["colors"]["text_completed"]
-    @property
-    def text_on_header(self) -> str: return self._data["colors"]["text_on_header"]
-    @property
-    def text_placeholder(self) -> str: return self._data["colors"]["text_placeholder"]
-    @property
-    def border_color(self) -> str: return self._data["colors"]["border_color"]
-    @property
-    def border_focus(self) -> str: return self._data["colors"]["border_focus"]
-    @property
-    def btn_danger_bg(self) -> str: return self._data["colors"]["btn_danger_bg"]
-    @property
-    def btn_danger_hover(self) -> str: return self._data["colors"]["btn_danger_hover"]
-    @property
-    def btn_close_hover_bg(self) -> str: return self._data["colors"]["btn_close_hover_bg"]
-    @property
-    def btn_header_hover_bg(self) -> str: return self._data["colors"]["btn_header_hover_bg"]
-    @property
-    def link_color(self) -> str: return self._data["colors"]["link_color"]
-    @property
-    def link_hover(self) -> str: return self._data["colors"]["link_hover"]
-    @property
-    def drag_highlight_color(self) -> str: return self._data["colors"]["drag_highlight"]
-    @property
-    def drag_border(self) -> str: return self._data["colors"]["drag_border"]
-    @property
-    def checkbox_check(self) -> str: return self._data["colors"]["checkbox_check"]
-    @property
-    def checkbox_bg(self) -> str: return self._data["colors"]["checkbox_bg"]
-    @property
-    def scrollbar_thumb(self) -> str: return self._data["colors"]["scrollbar_thumb"]
-    @property
-    def scrollbar_track(self) -> str: return self._data["colors"]["scrollbar_track"]
-    @property
-    def empty_state_fg(self) -> str: return self._data["colors"]["empty_state_fg"]
-    @property
-    def separator_color(self) -> str: return self._data["colors"]["separator_color"]
-    @property
-    def checkbox_border(self) -> str: return self._data["colors"]["checkbox_border"]
-    @property
-    def checkbox_hover_bg(self) -> str: return self._data["colors"]["checkbox_hover_bg"]
-    # -- Transparency --------------------------
-    @property
-    def active_alpha(self) -> float: return float(self._data["transparency"]["active"])
-    @property
-    def inactive_alpha(self) -> float: return float(self._data["transparency"]["inactive"])
+    # ── Dynamic attribute access ─────────────
 
-    # -- Spacing -------------------------------
-    @property
-    def spacing_xs(self) -> int: return self._data["spacing"]["xs"]
-    @property
-    def spacing_sm(self) -> int: return self._data["spacing"]["sm"]
-    @property
-    def spacing_md(self) -> int: return self._data["spacing"]["md"]
-    @property
-    def spacing_lg(self) -> int: return self._data["spacing"]["lg"]
-    @property
-    def spacing_xl(self) -> int: return self._data["spacing"]["xl"]
-    @property
-    def spacing_xxl(self) -> int: return self._data["spacing"]["xxl"]
+    def __getattr__(self, name: str) -> Any:
+        # Fast path: cached
+        cache = self.__dict__.get("_attr_cache")
+        if cache is not None and name in cache:
+            return cache[name]
 
-    # -- Settings ------------------------------
-    @property
-    def tasks_file(self) -> str: return self._data["settings"]["tasks_file"]
-    @property
-    def default_width(self) -> int: return int(self._data["settings"]["default_width"])
-    @property
-    def default_height(self) -> int: return int(self._data["settings"]["default_height"])
-    @property
-    def drag_threshold(self) -> int: return int(self._data["settings"].get("drag_threshold", 18))
-    @property
-    def min_width(self) -> int: return int(self._data["settings"].get("min_width", 240))
-    @property
-    def min_height(self) -> int: return int(self._data["settings"].get("min_height", 180))
-    @property
-    def max_task_length(self) -> int: return int(self._data["settings"].get("max_task_length", 300))
-    @property
-    def item_padding_y(self) -> int: return int(self._data["settings"].get("item_padding_y", 7))
-    @property
-    def item_padding_x(self) -> int: return int(self._data["settings"].get("item_padding_x", 10))
-    @property
-    def header_height(self) -> int: return int(self._data["settings"].get("header_height", 38))
-    @property
-    def footer_height(self) -> int: return int(self._data["settings"].get("footer_height", 32))
-    @property
-    def animation_ms(self) -> int: return int(self._data["settings"].get("animation_ms", 150))
-    @property
-    def confirm_delete(self) -> bool: return bool(self._data["settings"].get("confirm_delete", False))
-    @property
-    def max_visible_tasks(self) -> int: return int(self._data["settings"].get("max_visible_tasks", 100))
-    @property
-    def checkbox_size(self) -> int: return int(self._data["settings"].get("checkbox_size", 18))
-    @property
-    def group_completed(self) -> bool: return bool(self._data["settings"].get("group_completed", True))
-    @property
-    def separator_height(self) -> int: return int(self._data["settings"].get("separator_height", 1))
-    @property
-    def scrollbar_width(self) -> int: return int(self._data["settings"].get("scrollbar_width", 6))
-    # -- Fonts ---------------------------------
-    @property
-    def font_header(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["header"])
-    @property
-    def font_body(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["body"])
-    @property
-    def font_body_strike(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["body_strike"])
-    @property
-    def font_footer(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["footer"])
-    @property
-    def font_empty_hint(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["empty_hint"])
-    @property
-    def font_badge(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["badge"])
-    @property
-    def font_section(self) -> Tuple[str, ...]: return tuple(self._data["fonts"]["section"])
-    # -- Shortcuts -----------------------------
-    @property
-    def shortcut_new_task(self) -> str: return self._data["shortcuts"]["new_task"]
-    @property
-    def shortcut_delete_completed(self) -> str: return self._data["shortcuts"]["delete_completed"]
-    @property
-    def shortcut_close(self) -> str: return self._data["shortcuts"]["close"]
-    @property
-    def shortcut_focus_entry(self) -> str: return self._data["shortcuts"]["focus_entry"]
+        value = self._resolve_attr(name)
+        if value is _SENTINEL:
+            raise AttributeError(f"Config has no attribute {name!r}")
 
-    # -- Strings (i18n) ------------------------
+        # Cache for future access
+        if cache is not None:
+            cache[name] = value
+        return value
+
+    def _resolve_attr(self, name: str) -> Any:
+        # 1. Explicit aliases
+        if name in _PROPERTY_ALIASES:
+            section, key = _PROPERTY_ALIASES[name]
+            return self._cast(section, self._data[section][key])
+
+        # 2. spacing_<key>
+        if name.startswith(_SPACING_PREFIX):
+            key = name[len(_SPACING_PREFIX):]
+            if key in self._data["spacing"]:
+                return int(self._data["spacing"][key])
+
+        # 3. font_<key>
+        if name.startswith(_FONT_PREFIX):
+            key = name[len(_FONT_PREFIX):]
+            if key in self._data["fonts"]:
+                return tuple(self._data["fonts"][key])
+
+        # 4. shortcut_<key>
+        if name.startswith(_SHORTCUT_PREFIX):
+            key = name[len(_SHORTCUT_PREFIX):]
+            if key in self._data["shortcuts"]:
+                return str(self._data["shortcuts"][key])
+
+        # 5. colors (direct key match)
+        if name in self._data["colors"]:
+            return str(self._data["colors"][name])
+
+        # 6. settings (direct key match)
+        if name in self._data["settings"]:
+            return self._data["settings"][name]
+
+        return _SENTINEL
+
+    @staticmethod
+    def _cast(section: str, value: Any) -> Any:
+        if section == "colors":
+            return str(value)
+        if section == "transparency":
+            return float(value)
+        if section == "spacing":
+            return int(value)
+        if section == "fonts":
+            return tuple(value)
+        if section == "shortcuts":
+            return str(value)
+        return value
+
+    # ── Strings (i18n) ───────────────────────
+
     def string(self, key: str, **kwargs: Any) -> str:
         template = self._data["strings"].get(key, key)
         try:
@@ -414,5 +434,7 @@ class Config:
         except (KeyError, IndexError):
             return template
 
+
+_SENTINEL = object()
 
 config = Config()

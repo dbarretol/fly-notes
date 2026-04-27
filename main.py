@@ -3,6 +3,7 @@ Fly Notes — Lightweight floating sticky-notes task manager.
 Entry point: configures the platform, creates the root window, and launches the app.
 """
 
+import logging
 import sys
 import tkinter as tk
 
@@ -17,13 +18,25 @@ def _configure_platform() -> None:
             pass
 
 
+def _configure_logging() -> None:
+    """Bootstrap application-wide logging."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
 def main() -> None:
     """Application bootstrap."""
+    _configure_logging()
     _configure_platform()
 
     root = tk.Tk()
     root.withdraw()
 
+    # Import después de crear Tk para que el singleton Config
+    # no intente operaciones gráficas durante la carga del módulo.
     from fly_notes.fly_notes_app import FlyNotesApp
 
     app = FlyNotesApp(root)

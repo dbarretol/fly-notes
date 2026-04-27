@@ -1,6 +1,6 @@
 """
 Self-contained task-row widget with:
-* Custom-drawn Canvas checkbox (replaces ugly native Checkbutton)
+* Custom-drawn Canvas checkbox (consistent cross-platform)
 * Hover-reveal delete button
 * Distinct completed vs pending visual states
 * Keyboard-accessible delete
@@ -18,7 +18,9 @@ from .config import config
 class CustomCheckbox(tk.Canvas):
     """
     Canvas-drawn checkbox — consistent across all platforms.
-    Improved: stronger border for unchecked, subtle hover feedback.
+
+    Draws a rounded-rect box with checkmark. Supports hover feedback
+    and checked/unchecked states with distinct visual treatment.
     """
 
     def __init__(
@@ -52,6 +54,11 @@ class CustomCheckbox(tk.Canvas):
         self._hover_color = hover_color
         self._is_hovered = False
 
+        # Pre-compute geometry constants
+        self._pad = 2
+        self._radius = 3
+        self._check_width = 2.5
+
         self.bind("<Button-1>", self._on_click)
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
@@ -64,8 +71,9 @@ class CustomCheckbox(tk.Canvas):
 
     @checked.setter
     def checked(self, value: bool) -> None:
-        self._checked = value
-        self._draw()
+        if self._checked != value:
+            self._checked = value
+            self._draw()
 
     def _on_click(self, event: tk.Event = None) -> None:
         self._checked = not self._checked
@@ -74,18 +82,22 @@ class CustomCheckbox(tk.Canvas):
             self._command()
 
     def _on_enter(self, event: tk.Event = None) -> None:
-        self._is_hovered = True
-        self._draw()
+        if not self._is_hovered:
+            self._is_hovered = True
+            self._draw()
 
     def _on_leave(self, event: tk.Event = None) -> None:
-        self._is_hovered = False
-        self._draw()
+        if self._is_hovered:
+            self._is_hovered = False
+            self._draw()
 
     def _draw(self) -> None:
         self.delete("all")
         s = self._size
-        pad = 2
+        pad = self._pad
+        r = self._radius
 
+        # Determine visual state
         if self._checked:
             fill = self._check_color
             outline = self._check_color
@@ -99,45 +111,55 @@ class CustomCheckbox(tk.Canvas):
             outline = self._border_color
             border_w = 1.5
 
-        # Box with rounded corners (approximation)
-        r = 3
-        self.create_arc(pad, pad, pad + r*2, pad + r*2, start=90, extent=90,
-                        fill=fill, outline=outline, width=border_w, style="pieslice")
-        self.create_arc(s - pad - r*2, pad, s - pad, pad + r*2, start=0, extent=90,
-                        fill=fill, outline=outline, width=border_w, style="pieslice")
-        self.create_arc(pad, s - pad - r*2, pad + r*2, s - pad, start=180, extent=90,
-                        fill=fill, outline=outline, width=border_w, style="pieslice")
-        self.create_arc(s - pad - r*2, s - pad - r*2, s - pad, s - pad, start=270, extent=90,
-                        fill=fill, outline=outline, width=border_w, style="pieslice")
-        # Fill center
-        self.create_rectangle(pad + r, pad, s - pad - r, s - pad,
-                              fill=fill, outline=fill)
-        self.create_rectangle(pad, pad + r, s - pad, s - pad - r,
-                              fill=fill, outline=fill)
-        # Redraw border cleanly
-        self.create_rectangle(pad, pad, s - pad, s - pad,
-                              fill="", outline=outline, width=border_w)
+        # Rounded rectangle via arcs + fill rects
+        self._draw_rounded_rect(pad, pad, s - pad, s - pad, r, fill, outline, border_w)
 
         # Checkmark
         if self._checked:
             cx, cy = s / 2, s / 2
+            cw = self._check_width
             self.create_line(
-                cx - 4, cy,
-                cx - 1, cy + 3,
-                fill="white", width=2.5, capstyle="round",
+                cx - 4, cy, cx - 1, cy + 3,
+                fill="white", width=cw, capstyle="round",
             )
             self.create_line(
-                cx - 1, cy + 3,
-                cx + 5, cy - 4,
-                fill="white", width=2.5, capstyle="round",
+                cx - 1, cy + 3, cx + 5, cy - 4,
+                fill="white", width=cw, capstyle="round",
             )
 
+    def _draw_rounded_rect(
+        self,
+        x1: float, y1: float, x2: float, y2: float,
+        r: int, fill: str, outline: str, width: float,
+    ) -> None:
+        """Draw a rounded rectangle using arcs and rectangles."""
+        d = r * 2
+        # Four corner arcs
+        self.create_arc(x1, y1, x1 + d, y1 + d, start=90, extent=90,
+                        fill=fill, outline=outline, width=width, style="pieslice")
+        self.create_arc(x2 - d, y1, x2, y1 + d, start=0, extent=90,
+                        fill=fill, outline=outline, width=width, style="pieslice")
+        self.create_arc(x1, y2 - d, x1 + d, y2, start=180, extent=90,
+                        fill=fill, outline=outline, width=width, style="pieslice")
+        self.create_arc(x2 - d, y2 - d, x2, y2, start=270, extent=90,
+                        fill=fill, outline=outline, width=width, style="pieslice")
+        # Fill center regions
+        self.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill)
+        self.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill)
+        # Clean border on top
+        self.create_rectangle(x1, y1, x2, y2, fill="", outline=outline, width=width)
+
     def set_canvas_bg(self, color: str) -> None:
+        """Update background (used when row bg changes on hover/drag)."""
         self.config(bg=color)
 
 
 class TaskItem(tk.Frame):
-    """One task row: custom checkbox │ label │ delete button."""
+    """One task row: custom checkbox │ label │ delete button.
+
+    Exposes ``task_id``, ``completed_var``, and public references to
+    ``label``, ``check``, and ``delete_btn`` for external event binding.
+    """
 
     def __init__(
         self,
@@ -145,11 +167,11 @@ class TaskItem(tk.Frame):
         task_id: str,
         text: str,
         completed: bool = False,
-        on_status_change: Optional[Callable[[TaskItem], None]] = None,
-        on_delete: Optional[Callable[[TaskItem], None]] = None,
-        on_drag_start: Optional[Callable[[TaskItem, tk.Event], None]] = None,
-        on_drag_do: Optional[Callable[[TaskItem, tk.Event], None]] = None,
-        on_drag_stop: Optional[Callable[[TaskItem, tk.Event], None]] = None,
+        on_status_change: Optional[Callable[["TaskItem"], None]] = None,
+        on_delete: Optional[Callable[["TaskItem"], None]] = None,
+        on_drag_start: Optional[Callable[["TaskItem", tk.Event], None]] = None,
+        on_drag_do: Optional[Callable[["TaskItem", tk.Event], None]] = None,
+        on_drag_stop: Optional[Callable[["TaskItem", tk.Event], None]] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -164,7 +186,7 @@ class TaskItem(tk.Frame):
 
         # Identity
         self.task_id: str = task_id
-        self.text: str = text
+        self.task_text: str = text  # Renamed to avoid shadowing tk internals
 
         # Callbacks
         self._on_status_change = on_status_change
@@ -186,8 +208,8 @@ class TaskItem(tk.Frame):
             command=self._handle_status_change,
             bg=config.item_bg,
             check_color=config.checkbox_check,
-            border_color=config.checkbox_border,      # ← Nuevo token
-            hover_color=config.checkbox_hover_bg,      # ← Nuevo token
+            border_color=config.checkbox_border,
+            hover_color=config.checkbox_hover_bg,
         )
         self.check.pack(side="left", padx=(0, config.spacing_md))
 
@@ -205,7 +227,7 @@ class TaskItem(tk.Frame):
         # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
             self,
-            text="✕",
+            text=config.string("btn_close"),
             command=self._handle_delete,
             bg=config.item_bg,
             fg=config.text_secondary,
@@ -218,27 +240,33 @@ class TaskItem(tk.Frame):
             relief="flat",
             takefocus=True,
         )
-        # Starts hidden
         self._delete_visible = False
 
-        # ── Hover bindings ──────────────────
+        # ── Bindings ────────────────────────
+        self._bind_hover()
+        self._bind_drag()
+        self._bind_keyboard()
+
+        self._update_style()
+
+    # ── Binding setup ────────────────────────
+
+    def _bind_hover(self) -> None:
         for w in (self, self.label, self.check):
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
         self.delete_btn.bind("<Enter>", self._on_delete_btn_enter)
         self.delete_btn.bind("<Leave>", self._on_delete_btn_leave)
 
-        # ── Drag bindings ───────────────────
-        for widget in (self, self.label):
-            widget.bind("<Button-1>", self._start_drag)
-            widget.bind("<B1-Motion>", self._do_drag)
-            widget.bind("<ButtonRelease-1>", self._stop_drag)
+    def _bind_drag(self) -> None:
+        for w in (self, self.label):
+            w.bind("<Button-1>", self._start_drag)
+            w.bind("<B1-Motion>", self._do_drag)
+            w.bind("<ButtonRelease-1>", self._stop_drag)
 
-        # ── Keyboard ────────────────────────
+    def _bind_keyboard(self) -> None:
         self.delete_btn.bind("<Return>", lambda e: self._handle_delete())
         self.delete_btn.bind("<space>", lambda e: self._handle_delete())
-
-        self._update_style()
 
     # ── Hover ────────────────────────────────
 
@@ -254,35 +282,33 @@ class TaskItem(tk.Frame):
     def _on_leave(self, event: tk.Event = None) -> None:
         if self._is_dragging:
             return
-        try:
-            x, y = self.winfo_pointerxy()
-            w = self.winfo_containing(x, y)
-            if w and (w is self or str(w).startswith(str(self))):
-                return
-        except tk.TclError:
-            pass
+        if self._pointer_still_inside():
+            return
         self._is_hovered = False
         self._hide_delete_btn()
         self._apply_base_bg()
         self.config(cursor="")
 
     def _on_delete_btn_enter(self, event: tk.Event = None) -> None:
-        self._is_hovered = True  # Keep parent hover alive
+        self._is_hovered = True
         self.delete_btn.config(bg=config.btn_danger_bg, fg="#FFFFFF")
 
     def _on_delete_btn_leave(self, event: tk.Event = None) -> None:
         bg = self._current_base_bg()
         self.delete_btn.config(bg=bg, fg=config.text_secondary)
-        # Check if we truly left the row
+        if not self._pointer_still_inside():
+            self._is_hovered = False
+            self._hide_delete_btn()
+            self._apply_base_bg()
+
+    def _pointer_still_inside(self) -> bool:
+        """Check if the mouse pointer is still within this row's widget tree."""
         try:
             x, y = self.winfo_pointerxy()
             w = self.winfo_containing(x, y)
-            if not w or not str(w).startswith(str(self)):
-                self._is_hovered = False
-                self._hide_delete_btn()
-                self._apply_base_bg()
+            return w is not None and (w is self or str(w).startswith(str(self)))
         except tk.TclError:
-            pass
+            return False
 
     def _show_delete_btn(self) -> None:
         if not self._delete_visible:
@@ -308,12 +334,13 @@ class TaskItem(tk.Frame):
             self._on_delete(self)
 
     def _update_style(self) -> None:
-        if self.completed_var.get():
+        completed = self.completed_var.get()
+        if completed:
             self.label.config(font=config.font_body_strike, fg=config.text_completed)
-            self.check.checked = True
         else:
             self.label.config(font=config.font_body, fg=config.text_primary)
-            self.check.checked = False
+        # Sync checkbox without triggering redundant redraws
+        self.check.checked = completed
         self._apply_base_bg()
 
     def _current_base_bg(self) -> str:
@@ -352,6 +379,7 @@ class TaskItem(tk.Frame):
             self.config(highlightbackground=config.border_color, highlightthickness=1)
 
     def _set_row_bg(self, color: str) -> None:
+        """Propagate background colour to all child widgets in the row."""
         for w in (self, self.label):
             w.config(bg=color)
         self.check.set_canvas_bg(color)

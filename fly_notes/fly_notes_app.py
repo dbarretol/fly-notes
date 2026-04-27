@@ -3,7 +3,7 @@ Main orchestrator with full UX polish:
 * Placeholder entry, empty state, progress badge
 * Keyboard shortcuts, mousewheel scroll
 * Confirmation dialogs, hover-reveal delete
-* Proper footer rendering with explicit height
+* Grouped task list (pending / completed)
 """
 
 from __future__ import annotations
@@ -18,6 +18,412 @@ from .task_manager import TaskManager
 from .window_controller import WindowController
 
 
+# ─────────────────────────────────────────────
+# Sub-components extracted from the monolithic class
+# ─────────────────────────────────────────────
+
+
+class HeaderBar(tk.Frame):
+    """Title bar with drag, minimize, and close buttons."""
+
+    def __init__(
+        self,
+        master: tk.Widget,
+        on_close: callable,
+        on_minimize: callable,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            master,
+            bg=config.header_bg,
+            height=config.header_height,
+            highlightthickness=0,
+            bd=0,
+            **kwargs,
+        )
+        self.pack_propagate(False)
+
+        self._title_lbl = tk.Label(
+            self,
+            text=config.string("app_title"),
+            fg=config.text_on_header,
+            bg=config.header_bg,
+            font=config.font_header,
+        )
+        self._title_lbl.pack(side="left", padx=config.spacing_lg, pady=config.spacing_md)
+
+        # Close
+        self._close_btn = tk.Button(
+            self, text=config.string("btn_close"), command=on_close,
+            bg=config.header_bg, fg=config.text_on_header,
+            bd=0, activebackground=config.btn_close_hover_bg,
+            activeforeground="#FFFFFF", padx=config.spacing_lg,
+            font=config.font_header, cursor="hand2", relief="flat",
+        )
+        self._close_btn.pack(side="right", fill="y")
+        self._close_btn.bind(
+            "<Enter>", lambda e: self._close_btn.config(bg=config.btn_close_hover_bg))
+        self._close_btn.bind(
+            "<Leave>", lambda e: self._close_btn.config(bg=config.header_bg))
+
+        # Minimize
+        self._min_btn = tk.Button(
+            self, text=config.string("btn_minimize"), command=on_minimize,
+            bg=config.header_bg, fg=config.text_on_header,
+            bd=0, activebackground=config.btn_header_hover_bg,
+            activeforeground="#FFFFFF", padx=config.spacing_lg,
+            font=config.font_header, cursor="hand2", relief="flat",
+        )
+        self._min_btn.pack(side="right", fill="y")
+        self._min_btn.bind(
+            "<Enter>", lambda e: self._min_btn.config(bg=config.btn_header_hover_bg))
+        self._min_btn.bind(
+            "<Leave>", lambda e: self._min_btn.config(bg=config.header_bg))
+
+    @property
+    def draggable_widgets(self) -> list[tk.Widget]:
+        """Widgets that should initiate window drag."""
+        return [self, self._title_lbl]
+
+
+class TaskEntryBar(tk.Frame):
+    """Input field with placeholder behaviour."""
+
+    def __init__(
+        self,
+        master: tk.Widget,
+        on_submit: callable,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            master,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
+            **kwargs,
+        )
+        self._on_submit = on_submit
+        self._placeholder = config.string("entry_placeholder")
+
+        self._entry = tk.Entry(
+            self, bg="#FFFFFF", fg=config.text_placeholder,
+            insertbackground=config.text_primary, font=config.font_body,
+            bd=0, highlightthickness=2,
+            highlightbackground=config.border_color,
+            highlightcolor=config.border_focus,
+        )
+        self._entry.pack(fill="x", ipady=config.spacing_md)
+        self._entry.insert(0, self._placeholder)
+        self._entry.bind("<FocusIn>", self._focus_in)
+        self._entry.bind("<FocusOut>", self._focus_out)
+        self._entry.bind("<Return>", lambda _: self._submit())
+
+    @property
+    def entry_widget(self) -> tk.Entry:
+        return self._entry
+
+    def focus_entry(self) -> None:
+        self._entry.focus_set()
+        self._focus_in()
+
+    def get_text(self) -> str:
+        """Return stripped text, or empty string if placeholder."""
+        raw = self._entry.get().strip()
+        if raw == self._placeholder:
+            return ""
+        return raw
+
+    def clear(self) -> None:
+        self._entry.delete(0, tk.END)
+
+    # ── Placeholder ──────────────────────────
+
+    def _focus_in(self, event: tk.Event = None) -> None:
+        if self._entry.get() == self._placeholder:
+            self._entry.delete(0, tk.END)
+            self._entry.config(fg=config.text_primary)
+
+    def _focus_out(self, event: tk.Event = None) -> None:
+        if not self._entry.get().strip():
+            self._entry.delete(0, tk.END)
+            self._entry.insert(0, self._placeholder)
+            self._entry.config(fg=config.text_placeholder)
+
+    def _submit(self) -> None:
+        text = self.get_text()
+        if text:
+            self._on_submit(text[: config.max_task_length])
+            self.clear()
+
+
+class FooterBar(tk.Frame):
+    """Status badge and 'clear completed' link."""
+
+    def __init__(
+        self,
+        master: tk.Widget,
+        on_clear: callable,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            master,
+            bg=config.footer_bg,
+            height=config.footer_height,
+            highlightthickness=0,
+            bd=0,
+            **kwargs,
+        )
+        self.pack_propagate(False)
+        self._on_clear = on_clear
+
+        self._badge_label = tk.Label(
+            self, text="", fg=config.text_secondary,
+            bg=config.footer_bg, font=config.font_badge,
+        )
+        self._badge_label.pack(side="left", padx=config.spacing_lg)
+
+        self._clear_btn = tk.Label(
+            self, text=config.string("clear_completed_zero"),
+            fg=config.link_color, bg=config.footer_bg,
+            font=config.font_footer, cursor="hand2",
+        )
+        self._clear_btn.bind("<Button-1>", lambda _: self._on_clear())
+        self._clear_btn.bind("<Enter>", self._on_hover)
+        self._clear_btn.bind("<Leave>", self._on_leave)
+
+    def update_counts(self, total: int, done: int) -> None:
+        if total == 0:
+            self._badge_label.config(text="")
+        else:
+            self._badge_label.config(
+                text=config.string("badge_format", done=done, total=total)
+            )
+        if done > 0:
+            self._clear_btn.config(
+                text=config.string("clear_completed", count=done)
+            )
+            self._clear_btn.pack(side="right", padx=config.spacing_lg)
+        else:
+            self._clear_btn.pack_forget()
+
+    def _on_hover(self, event: tk.Event = None) -> None:
+        self._clear_btn.config(
+            fg=config.link_hover,
+            font=(*config.font_footer[:2], "underline"),
+        )
+
+    def _on_leave(self, event: tk.Event = None) -> None:
+        self._clear_btn.config(fg=config.link_color, font=config.font_footer)
+
+
+class TaskListView(tk.Frame):
+    """Scrollable canvas hosting TaskItem widgets with optional grouping."""
+
+    def __init__(self, master: tk.Widget, **kwargs: Any) -> None:
+        super().__init__(
+            master,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
+            **kwargs,
+        )
+        self._scrollbar_visible = False
+        self._task_widgets: List[TaskItem] = []
+        # Transient widgets (section headers, separators, spacers)
+        self._transient_widgets: List[tk.Widget] = []
+
+        # Scrollbar
+        self._scrollbar = tk.Scrollbar(
+            self, orient="vertical",
+            width=config.scrollbar_width,
+            troughcolor=config.scrollbar_track,
+            bg=config.scrollbar_thumb,
+            activebackground=config.scrollbar_thumb,
+            bd=0, highlightthickness=0, relief="flat",
+        )
+
+        # Canvas
+        self._canvas = tk.Canvas(
+            self, bg=config.content_bg,
+            highlightthickness=0, bd=0,
+            yscrollcommand=self._scrollbar_set,
+        )
+        self._scrollbar.config(command=self._canvas.yview)
+
+        # Inner frame
+        self._inner = tk.Frame(
+            self._canvas, bg=config.content_bg,
+            highlightthickness=0, bd=0,
+        )
+
+        self._canvas.pack(side="left", fill="both", expand=True)
+        self._canvas_win_id = self._canvas.create_window(
+            (0, 0), window=self._inner,
+            anchor="nw", width=config.default_width,
+        )
+
+        # Empty state label
+        self._empty_label = tk.Label(
+            self._inner,
+            text=config.string("empty_state"),
+            fg=config.empty_state_fg, bg=config.content_bg,
+            font=config.font_empty_hint, pady=config.spacing_xxl,
+        )
+
+        # Mousewheel on canvas & inner frame
+        for w in (self._canvas, self._inner):
+            w.bind("<MouseWheel>", self._on_mousewheel)
+            w.bind("<Button-4>", self._on_mousewheel)
+            w.bind("<Button-5>", self._on_mousewheel)
+
+    # ── Public API ───────────────────────────
+
+    @property
+    def task_widgets(self) -> List[TaskItem]:
+        return self._task_widgets
+
+    @property
+    def inner_frame(self) -> tk.Frame:
+        return self._inner
+
+    def add_widget(self, widget: TaskItem) -> None:
+        self._task_widgets.append(widget)
+        # Propagate scroll events
+        for child in (widget, widget.label, widget.check, widget.delete_btn):
+            child.bind("<MouseWheel>", self._on_mousewheel)
+            child.bind("<Button-4>", self._on_mousewheel)
+            child.bind("<Button-5>", self._on_mousewheel)
+
+    def remove_widget(self, widget: TaskItem) -> None:
+        if widget in self._task_widgets:
+            self._task_widgets.remove(widget)
+        widget.destroy()
+
+    def repack(self) -> None:
+        """Re-layout all task widgets with optional grouping."""
+        # Destroy old transient widgets
+        for w in self._transient_widgets:
+            try:
+                w.destroy()
+            except tk.TclError:
+                pass
+        self._transient_widgets.clear()
+
+        # Unpack task widgets (don't destroy)
+        for w in self._task_widgets:
+            w.pack_forget()
+
+        if not self._task_widgets:
+            self._update_empty_state()
+            self._update_scroll_region()
+            return
+
+        if config.group_completed:
+            self._pack_grouped()
+        else:
+            self._pack_flat()
+
+        # Bottom spacer
+        spacer = tk.Frame(self._inner, bg=config.content_bg, height=config.spacing_lg, bd=0)
+        spacer.pack(fill="x")
+        self._transient_widgets.append(spacer)
+
+        self._update_empty_state()
+        self._update_scroll_region()
+
+    def update_canvas_width(self, width: int) -> None:
+        self._canvas.itemconfigure(self._canvas_win_id, width=width)
+        self._update_scroll_region()
+
+    # ── Private helpers ──────────────────────
+
+    def _pack_grouped(self) -> None:
+        pending = [w for w in self._task_widgets if not w.completed_var.get()]
+        completed = [w for w in self._task_widgets if w.completed_var.get()]
+
+        if pending:
+            header = self._make_section_label(
+                config.string("section_pending", count=len(pending))
+            )
+            header.pack(
+                fill="x", padx=config.spacing_xl,
+                pady=(config.spacing_md, config.spacing_xs),
+            )
+        for w in pending:
+            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+        if completed:
+            if pending:
+                sep = tk.Frame(
+                    self._inner, bg=config.separator_color,
+                    height=config.separator_height, bd=0,
+                )
+                sep.pack(
+                    fill="x", padx=config.spacing_xl,
+                    pady=(config.spacing_lg, config.spacing_xs),
+                )
+                self._transient_widgets.append(sep)
+
+            header = self._make_section_label(
+                config.string("section_completed", count=len(completed))
+            )
+            header.pack(
+                fill="x", padx=config.spacing_xl,
+                pady=(config.spacing_xs, config.spacing_xs),
+            )
+            for w in completed:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+    def _pack_flat(self) -> None:
+        for w in self._task_widgets:
+            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+    def _make_section_label(self, text: str) -> tk.Label:
+        lbl = tk.Label(
+            self._inner, text=text,
+            fg=config.text_secondary, bg=config.content_bg,
+            font=config.font_section, anchor="w",
+        )
+        self._transient_widgets.append(lbl)
+        return lbl
+
+    def _update_empty_state(self) -> None:
+        if not self._task_widgets:
+            self._empty_label.pack(fill="x", padx=config.spacing_xl)
+        else:
+            self._empty_label.pack_forget()
+
+    def _update_scroll_region(self) -> None:
+        self._inner.update_idletasks()
+        bbox = self._canvas.bbox("all")
+        if bbox:
+            self._canvas.config(scrollregion=bbox)
+
+    def _scrollbar_set(self, first: str, last: str) -> None:
+        self._scrollbar.set(first, last)
+        needs_scroll = not (float(first) <= 0.0 and float(last) >= 1.0)
+        if needs_scroll and not self._scrollbar_visible:
+            self._scrollbar.pack(side="right", fill="y")
+            self._scrollbar_visible = True
+        elif not needs_scroll and self._scrollbar_visible:
+            self._scrollbar.pack_forget()
+            self._scrollbar_visible = False
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        if event.num == 4:
+            delta = -1
+        elif event.num == 5:
+            delta = 1
+        else:
+            delta = int(-1 * (event.delta / 120))
+        self._canvas.yview_scroll(delta, "units")
+
+
+# ─────────────────────────────────────────────
+# Main application controller
+# ─────────────────────────────────────────────
+
+
 class FlyNotesApp:
     """Top-level controller for the Fly Notes application."""
 
@@ -29,29 +435,23 @@ class FlyNotesApp:
         )
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        # ── FIX: Remove root border artifacts ──
-        self.root.config(
-            bg=config.content_bg,
-            highlightthickness=0,
-            bd=0,
-        )
+        self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
         self.root.attributes("-alpha", config.active_alpha)
 
         # Data
         self.manager = TaskManager(
             tasks_file=config.tasks_file,
-            error_callback=self._handle_error,
+            error_callback=self._handle_error_threadsafe,
         )
 
-        # Window
+        # Window controller
         self.window_ctrl = WindowController(
-            self.root, on_resize_callback=self._on_window_resize
+            self.root, on_resize_callback=self._on_window_resize,
         )
 
         # Drag state
         self._dragging_item: Optional[TaskItem] = None
         self._drag_start_y: int = 0
-        self._task_widgets: List[TaskItem] = []
 
         self._build_ui()
         self._bind_events()
@@ -63,274 +463,83 @@ class FlyNotesApp:
     # ── UI Construction ──────────────────────
 
     def _build_ui(self) -> None:
-        # ─── Header ──────────────────────────
-        self._header = tk.Frame(
+        # Header
+        self._header = HeaderBar(
             self.root,
-            bg=config.header_bg,
-            height=config.header_height,
-            highlightthickness=0,
-            bd=0,
+            on_close=self._on_close,
+            on_minimize=self.window_ctrl.minimize_window,
         )
         self._header.pack(fill="x", side="top")
-        self._header.pack_propagate(False)
 
-        self._title_lbl = tk.Label(
-            self._header,
-            text=config.string("app_title"),
-            fg=config.text_on_header,
-            bg=config.header_bg,
-            font=config.font_header,
-        )
-        self._title_lbl.pack(side="left", padx=config.spacing_lg, pady=config.spacing_md)
-
-        # Close
-        self._close_btn = tk.Button(
-            self._header, text="✕", command=self._on_close,
-            bg=config.header_bg, fg=config.text_on_header,
-            bd=0, activebackground=config.btn_close_hover_bg,
-            activeforeground="#FFFFFF", padx=config.spacing_lg,
-            font=config.font_header, cursor="hand2", relief="flat",
-        )
-        self._close_btn.pack(side="right", fill="y")
-        self._close_btn.bind("<Enter>",
-            lambda e: self._close_btn.config(bg=config.btn_close_hover_bg))
-        self._close_btn.bind("<Leave>",
-            lambda e: self._close_btn.config(bg=config.header_bg))
-
-        # Minimize
-        self._min_btn = tk.Button(
-            self._header, text="—", command=self.window_ctrl.minimize_window,
-            bg=config.header_bg, fg=config.text_on_header,
-            bd=0, activebackground=config.btn_header_hover_bg,
-            activeforeground="#FFFFFF", padx=config.spacing_lg,
-            font=config.font_header, cursor="hand2", relief="flat",
-        )
-        self._min_btn.pack(side="right", fill="y")
-        self._min_btn.bind("<Enter>",
-            lambda e: self._min_btn.config(bg=config.btn_header_hover_bg))
-        self._min_btn.bind("<Leave>",
-            lambda e: self._min_btn.config(bg=config.header_bg))
-
-        # ─── Separator under header ─────────
+        # Separator under header
         tk.Frame(
             self.root, bg=config.separator_color,
             height=config.separator_height, bd=0,
         ).pack(fill="x")
 
-        # ─── Footer (pack BEFORE canvas) ─────
-        # Separator above footer
+        # Footer separator + footer (packed bottom-up)
         self._footer_sep = tk.Frame(
             self.root, bg=config.separator_color,
             height=config.separator_height, bd=0,
         )
+
+        self._footer = FooterBar(self.root, on_clear=self._clear_completed)
+
+        # Pack order: footer at bottom, then separator above it
+        self._footer.pack(fill="x", side="bottom")
         self._footer_sep.pack(fill="x", side="bottom")
 
-        self._footer = tk.Frame(
-            self.root, bg=config.footer_bg,
-            height=config.footer_height,
-            highlightthickness=0, bd=0,
+        # Entry
+        self._entry_bar = TaskEntryBar(
+            self.root, on_submit=self._add_new_task,
         )
-        self._footer.pack(fill="x", side="bottom")
-        self._footer.pack_propagate(False)
-
-        # Re-pack separator after footer so visual order is: content | sep | footer
-        self._footer_sep.pack_forget()
-        self._footer_sep.pack(fill="x", side="bottom", before=self._footer)
-        self._footer.pack(fill="x", side="bottom")
-
-        self._badge_label = tk.Label(
-            self._footer, text="", fg=config.text_secondary,
-            bg=config.footer_bg, font=config.font_badge,
-        )
-        self._badge_label.pack(side="left", padx=config.spacing_lg)
-
-        self._clear_btn = tk.Label(
-            self._footer, text=config.string("clear_completed_zero"),
-            fg=config.link_color, bg=config.footer_bg,
-            font=config.font_footer, cursor="hand2",
-        )
-        self._clear_btn.bind("<Button-1>", lambda _: self._clear_completed())
-        self._clear_btn.bind("<Enter>", self._on_clear_hover)
-        self._clear_btn.bind("<Leave>", self._on_clear_leave)
-
-        # ─── Entry ───────────────────────────
-        entry_frame = tk.Frame(
-            self.root, bg=config.content_bg,
-            highlightthickness=0, bd=0,
-        )
-        entry_frame.pack(
-            fill="x",
-            padx=config.spacing_lg,
+        self._entry_bar.pack(
+            fill="x", padx=config.spacing_lg,
             pady=(config.spacing_md, config.spacing_sm),
         )
 
-        self._task_entry = tk.Entry(
-            entry_frame, bg="#FFFFFF", fg=config.text_placeholder,
-            insertbackground=config.text_primary, font=config.font_body,
-            bd=0, highlightthickness=2,
-            highlightbackground=config.border_color,
-            highlightcolor=config.border_focus,
-        )
-        self._task_entry.pack(fill="x", ipady=config.spacing_md)
-        self._task_entry.insert(0, config.string("entry_placeholder"))
-        self._task_entry.bind("<FocusIn>", self._entry_focus_in)
-        self._task_entry.bind("<FocusOut>", self._entry_focus_out)
-        self._task_entry.bind("<Return>", lambda _: self._add_new_task())
-
-        # ─── Separator under entry ───────────
+        # Separator under entry
         tk.Frame(
             self.root, bg=config.separator_color,
             height=config.separator_height, bd=0,
         ).pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_sm, 0))
 
-        # ─── Scrollable task list + scrollbar ─
-        list_container = tk.Frame(
-            self.root, bg=config.content_bg,
-            highlightthickness=0, bd=0,
-        )
-        list_container.pack(fill="both", expand=True)
-
-        # Custom thin scrollbar
-        self._scrollbar = tk.Scrollbar(
-            list_container,
-            orient="vertical",
-            width=config.scrollbar_width,
-            troughcolor=config.scrollbar_track,
-            bg=config.scrollbar_thumb,
-            activebackground=config.scrollbar_thumb,
-            bd=0,
-            highlightthickness=0,
-            relief="flat",
-        )
-
-        self._list_canvas = tk.Canvas(
-            list_container, bg=config.content_bg,
-            highlightthickness=0, bd=0,
-            yscrollcommand=self._scrollbar_set,
-        )
-        self._scrollbar.config(command=self._list_canvas.yview)
-
-        self._scroll_frame = tk.Frame(
-            self._list_canvas, bg=config.content_bg,
-            highlightthickness=0, bd=0,
-        )
-
-        # Pack canvas (scrollbar shown/hidden dynamically)
-        self._list_canvas.pack(side="left", fill="both", expand=True)
-        self._canvas_win_id = self._list_canvas.create_window(
-            (0, 0), window=self._scroll_frame,
-            anchor="nw", width=config.default_width,
-        )
-
-        # Section headers for grouping
-        self._pending_header = None
-        self._completed_header = None
-        self._completed_sep = None
-
-        # ─── Empty state ─────────────────────
-        self._empty_label = tk.Label(
-            self._scroll_frame,
-            text=config.string("empty_state"),
-            fg=config.empty_state_fg, bg=config.content_bg,
-            font=config.font_empty_hint, pady=config.spacing_xxl,
-        )
-        # Track if scrollbar is visible
-        self._scrollbar_visible = False
-
-    def _scrollbar_set(self, first: str, last: str) -> None:
-        """Show scrollbar only when content overflows."""
-        self._scrollbar.set(first, last)
-        if float(first) <= 0.0 and float(last) >= 1.0:
-            if self._scrollbar_visible:
-                self._scrollbar.pack_forget()
-                self._scrollbar_visible = False
-        else:
-            if not self._scrollbar_visible:
-                self._scrollbar.pack(side="right", fill="y")
-                self._scrollbar_visible = True
-
-    # ── Clear button hover ───────────────────
-
-    def _on_clear_hover(self, event: tk.Event = None) -> None:
-        self._clear_btn.config(
-            fg=config.link_hover,
-            font=(*config.font_footer[:2], "underline"),
-        )
-
-    def _on_clear_leave(self, event: tk.Event = None) -> None:
-        self._clear_btn.config(
-            fg=config.link_color,
-            font=config.font_footer,
-        )
-
-    # ── Placeholder behaviour ────────────────
-
-    def _entry_focus_in(self, event: tk.Event = None) -> None:
-        if self._task_entry.get() == config.string("entry_placeholder"):
-            self._task_entry.delete(0, tk.END)
-            self._task_entry.config(fg=config.text_primary)
-
-    def _entry_focus_out(self, event: tk.Event = None) -> None:
-        if not self._task_entry.get().strip():
-            self._task_entry.delete(0, tk.END)
-            self._task_entry.insert(0, config.string("entry_placeholder"))
-            self._task_entry.config(fg=config.text_placeholder)
+        # Task list
+        self._task_list = TaskListView(self.root)
+        self._task_list.pack(fill="both", expand=True)
 
     # ── Events ───────────────────────────────
 
     def _bind_events(self) -> None:
-        self.window_ctrl.bind_drag(self._header)
-        self.window_ctrl.bind_drag(self._title_lbl)
+        for w in self._header.draggable_widgets:
+            self.window_ctrl.bind_drag(w)
 
-        self.root.bind("<FocusIn>",
-            lambda _: self.root.attributes("-alpha", config.active_alpha))
-        self.root.bind("<FocusOut>",
-            lambda _: self.root.attributes("-alpha", config.inactive_alpha))
-        self.root.bind("<Map>",
-            lambda _: self.root.attributes("-topmost", True))
+        self.root.bind(
+            "<FocusIn>",
+            lambda _: self.root.attributes("-alpha", config.active_alpha),
+        )
+        self.root.bind(
+            "<FocusOut>",
+            lambda _: self.root.attributes("-alpha", config.inactive_alpha),
+        )
+        self.root.bind("<Map>", lambda _: self.root.attributes("-topmost", True))
 
-        # Mousewheel
-        for w in (self._list_canvas, self._scroll_frame):
-            w.bind("<MouseWheel>", self._on_mousewheel)
-            w.bind("<Button-4>", self._on_mousewheel)
-            w.bind("<Button-5>", self._on_mousewheel)
-
-        # Keyboard shortcuts
+        # Shortcuts
         self.root.bind(config.shortcut_close, lambda _: self._on_close())
-        self.root.bind(config.shortcut_new_task, lambda _: self._focus_entry())
-        self.root.bind(config.shortcut_focus_entry, lambda _: self._focus_entry())
+        self.root.bind(config.shortcut_new_task, lambda _: self._entry_bar.focus_entry())
+        self.root.bind(config.shortcut_focus_entry, lambda _: self._entry_bar.focus_entry())
         self.root.bind(config.shortcut_delete_completed, lambda _: self._clear_completed())
-
-    def _focus_entry(self) -> None:
-        self._task_entry.focus_set()
-        self._entry_focus_in()
-
-    def _on_mousewheel(self, event: tk.Event) -> None:
-        if event.num == 4:
-            delta = -1
-        elif event.num == 5:
-            delta = 1
-        else:
-            delta = int(-1 * (event.delta / 120))
-        self._list_canvas.yview_scroll(delta, "units")
 
     # ── Task CRUD ────────────────────────────
 
-    def _add_new_task(self) -> None:
-        raw = self._task_entry.get().strip()
-        if not raw or raw == config.string("entry_placeholder"):
-            return
-        text = raw[: config.max_task_length]
+    def _add_new_task(self, text: str) -> None:
         task = self.manager.add_task(text)
-        self._task_entry.delete(0, tk.END)
         self._create_task_widget(task)
-        self._refresh_footer()
-        self._update_empty_state()
-        self._repack_tasks()
+        self._refresh_ui()
 
     def _create_task_widget(self, task: Dict[str, Any]) -> TaskItem:
         widget = TaskItem(
-            self._scroll_frame,
+            self._task_list.inner_frame,
             task_id=task["id"],
             text=task["text"],
             completed=task["completed"],
@@ -340,15 +549,7 @@ class FlyNotesApp:
             on_drag_do=self._do_reorder,
             on_drag_stop=self._stop_reorder,
         )
-        widget.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
-
-        # Propagate scroll
-        for child in (widget, widget.label, widget.check, widget.delete_btn):
-            child.bind("<MouseWheel>", self._on_mousewheel)
-            child.bind("<Button-4>", self._on_mousewheel)
-            child.bind("<Button-5>", self._on_mousewheel)
-
-        self._task_widgets.append(widget)
+        self._task_list.add_widget(widget)
         return widget
 
     def _delete_task(self, item: TaskItem) -> None:
@@ -360,18 +561,12 @@ class FlyNotesApp:
             if not ok:
                 return
         self.manager.delete_task(item.task_id)
-        self._task_widgets.remove(item)
-        item.destroy()
-        self._refresh_footer()
-        self._update_empty_state()
-        self._repack_tasks()
+        self._task_list.remove_widget(item)
+        self._refresh_ui()
 
     def _toggle_task(self, item: TaskItem) -> None:
         self.manager.toggle_task(item.task_id)
-        self._refresh_footer()
-        # Re-group after toggle if grouping is enabled
-        if config.group_completed:
-            self._repack_tasks()
+        self._refresh_ui()
 
     def _clear_completed(self) -> None:
         count = self.manager.completed_count
@@ -384,15 +579,12 @@ class FlyNotesApp:
         if not ok:
             return
         self.manager.clear_completed()
-        to_remove = [w for w in self._task_widgets if w.completed_var.get()]
+        to_remove = [w for w in self._task_list.task_widgets if w.completed_var.get()]
         for w in to_remove:
-            self._task_widgets.remove(w)
-            w.destroy()
-        self._refresh_footer()
-        self._update_empty_state()
-        self._repack_tasks()
+            self._task_list.remove_widget(w)
+        self._refresh_ui()
 
-    # ── Drag-and-drop ────────────────────────
+    # ── Drag-and-drop (model-safe) ───────────
 
     def _start_reorder(self, item: TaskItem, event: tk.Event) -> None:
         self._dragging_item = item
@@ -405,173 +597,72 @@ class FlyNotesApp:
             self._dragging_item.set_drag_active(False)
             self._dragging_item.set_bg(config.item_bg)
             self._dragging_item = None
-        self._update_canvas()
+        self._task_list.repack()
 
     def _do_reorder(self, item: TaskItem, event: tk.Event) -> None:
         if self._dragging_item is None:
             return
+
+        widgets = self._task_list.task_widgets
         y = event.y_root
+
         try:
-            idx = self._task_widgets.index(item)
+            visual_idx = widgets.index(item)
         except ValueError:
             return
 
-        if y < self._drag_start_y - config.drag_threshold and idx > 0:
-            if self.manager.reorder_tasks(idx, idx - 1):
-                self._task_widgets[idx], self._task_widgets[idx - 1] = (
-                    self._task_widgets[idx - 1], self._task_widgets[idx],
-                )
-                self._repack_tasks()
-                self._drag_start_y = y
+        direction = 0
+        if y < self._drag_start_y - config.drag_threshold and visual_idx > 0:
+            direction = -1
         elif (
             y > self._drag_start_y + config.drag_threshold
-            and idx < len(self._task_widgets) - 1
+            and visual_idx < len(widgets) - 1
         ):
-            if self.manager.reorder_tasks(idx, idx + 1):
-                self._task_widgets[idx], self._task_widgets[idx + 1] = (
-                    self._task_widgets[idx + 1], self._task_widgets[idx],
-                )
-                self._repack_tasks()
-                self._drag_start_y = y
+            direction = 1
+
+        if direction == 0:
+            return
+
+        target_visual_idx = visual_idx + direction
+
+        # Resolve model indices via task_id — safe regardless of grouping
+        try:
+            model_idx = self.manager.index_of(item.task_id)
+            target_task_id = widgets[target_visual_idx].task_id
+            target_model_idx = self.manager.index_of(target_task_id)
+        except ValueError:
+            return
+
+        if self.manager.reorder_tasks(model_idx, target_model_idx):
+            widgets[visual_idx], widgets[target_visual_idx] = (
+                widgets[target_visual_idx], widgets[visual_idx],
+            )
+            self._task_list.repack()
+            self._drag_start_y = y
 
     # ── UI State ─────────────────────────────
 
     def _load_initial_tasks(self) -> None:
         for task in self.manager.tasks:
             self._create_task_widget(task)
-        self._refresh_footer()
-        self._update_empty_state()
-        self._repack_tasks()
+        self._refresh_ui()
 
-    def _repack_tasks(self) -> None:
-        """
-        Repack all task widgets with optional grouping.
-        
-        Creates section headers with counters and ensures
-        proper bottom padding so the last item isn't clipped
-        by the footer.
-        """
-        # Clear all children from scroll_frame (including old separators/headers)
-        for w in self._scroll_frame.winfo_children():
-            # Don't destroy task widgets — just unpack them
-            if isinstance(w, TaskItem):
-                w.pack_forget()
-            else:
-                # Destroy transient widgets (separators, section headers, spacers)
-                w.destroy()
-
-        if not self._task_widgets:
-            return
-
-        if config.group_completed:
-            pending = [w for w in self._task_widgets if not w.completed_var.get()]
-            completed = [w for w in self._task_widgets if w.completed_var.get()]
-
-            # ── Section: TO DO ───────────────
-            if pending:
-                pending_header = tk.Label(
-                    self._scroll_frame,
-                    text=config.string("section_pending", count=len(pending)),
-                    fg=config.text_secondary,
-                    bg=config.content_bg,
-                    font=config.font_section,
-                    anchor="w",
-                )
-                pending_header.pack(
-                    fill="x",
-                    padx=config.spacing_xl,
-                    pady=(config.spacing_md, config.spacing_xs),
-                )
-
-            for w in pending:
-                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
-
-            # ── Separator + Section: COMPLETED ──
-            if completed:
-                # Only show separator if there are also pending tasks
-                if pending:
-                    sep = tk.Frame(
-                        self._scroll_frame,
-                        bg=config.separator_color,
-                        height=config.separator_height,
-                        bd=0,
-                    )
-                    sep.pack(
-                        fill="x",
-                        padx=config.spacing_xl,
-                        pady=(config.spacing_lg, config.spacing_xs),
-                    )
-
-                completed_header = tk.Label(
-                    self._scroll_frame,
-                    text=config.string("section_completed", count=len(completed)),
-                    fg=config.text_secondary,
-                    bg=config.content_bg,
-                    font=config.font_section,
-                    anchor="w",
-                )
-                completed_header.pack(
-                    fill="x",
-                    padx=config.spacing_xl,
-                    pady=(config.spacing_xs, config.spacing_xs),
-                )
-
-                for w in completed:
-                    w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
-
-        else:
-            # No grouping — flat list
-            for w in self._task_widgets:
-                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
-
-        # ── Bottom spacer ────────────────────
-        # Prevents the last item from being clipped by the footer
-        bottom_spacer = tk.Frame(
-            self._scroll_frame,
-            bg=config.content_bg,
-            height=config.spacing_lg,
-            bd=0,
+    def _refresh_ui(self) -> None:
+        """Single entry point to update footer + empty state + layout."""
+        self._footer.update_counts(
+            total=self.manager.task_count,
+            done=self.manager.completed_count,
         )
-        bottom_spacer.pack(fill="x")
-
-        self._update_canvas()
-
-    def _update_canvas(self) -> None:
-        self._scroll_frame.update_idletasks()
-        bbox = self._list_canvas.bbox("all")
-        if bbox:
-            self._list_canvas.config(scrollregion=bbox)
-
-    def _update_empty_state(self) -> None:
-        if not self._task_widgets:
-            self._empty_label.pack(fill="x", padx=config.spacing_xl)
-        else:
-            self._empty_label.pack_forget()
-
-    def _refresh_footer(self) -> None:
-        total = self.manager.task_count
-        done = self.manager.completed_count
-
-        if total == 0:
-            self._badge_label.config(text="")
-        else:
-            self._badge_label.config(text=f"{done} of {total} done")
-
-        if done > 0:
-            self._clear_btn.config(
-                text=config.string("clear_completed", count=done)
-            )
-            self._clear_btn.pack(side="right", padx=config.spacing_lg)
-        else:
-            self._clear_btn.pack_forget()
+        self._task_list.repack()
 
     def _on_window_resize(self) -> None:
-        new_w = self.root.winfo_width()
-        self._list_canvas.itemconfigure(self._canvas_win_id, width=new_w)
-        self._update_canvas()
+        self._task_list.update_canvas_width(self.root.winfo_width())
 
-    def _handle_error(self, message: str) -> None:
-        messagebox.showerror(config.string("app_title"), message)
+    def _handle_error_threadsafe(self, message: str) -> None:
+        """Schedule error dialog on the main Tkinter thread."""
+        self.root.after(0, lambda: messagebox.showerror(
+            config.string("app_title"), message
+        ))
 
     def _on_close(self) -> None:
         try:
