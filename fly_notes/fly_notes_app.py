@@ -23,6 +23,42 @@ from .window_controller import WindowController
 # ─────────────────────────────────────────────
 
 
+def compute_reorder_target(
+    visual_ids: List[str],
+    visual_completed: List[bool],
+    dragging_id: str,
+    delta_y: int,
+    threshold: int,
+    enforce_group_boundary: bool = True,
+) -> Optional[str]:
+    """Pure decision logic for drag-and-drop reordering.
+
+    Given the *visually rendered* order of task ids (and their completed
+    flag in that same order), the id of the task being dragged, and the
+    vertical distance dragged since the gesture started, return the id
+    of the neighboring task to swap with — or ``None`` if no swap should
+    happen (below threshold, at the edge of the list, or the swap would
+    cross the pending/completed group boundary).
+    """
+    try:
+        idx = visual_ids.index(dragging_id)
+    except ValueError:
+        return None
+
+    if delta_y < -threshold and idx > 0:
+        direction = -1
+    elif delta_y > threshold and idx < len(visual_ids) - 1:
+        direction = 1
+    else:
+        return None
+
+    target_idx = idx + direction
+    if enforce_group_boundary and visual_completed[target_idx] != visual_completed[idx]:
+        return None
+
+    return visual_ids[target_idx]
+
+
 class HeaderBar(tk.Frame):
     """Title bar with drag, minimize, and close buttons."""
 
@@ -280,7 +316,29 @@ class TaskListView(tk.Frame):
 
     @property
     def task_widgets(self) -> List[TaskItem]:
-        return self._task_widgets
+        """Return a copy of the insertion-order widget list."""
+        return list(self._task_widgets)
+
+    def visual_order(self) -> List[TaskItem]:
+        """Return widgets in the order they are actually rendered.
+
+        Mirrors ``_pack_grouped``/``_pack_flat``: when grouping is
+        enabled, pending widgets come first, then completed ones; each
+        group otherwise keeps insertion order.
+        """
+        if config.group_completed:
+            pending = [w for w in self._task_widgets if not w.completed_var.get()]
+            completed = [w for w in self._task_widgets if w.completed_var.get()]
+            return pending + completed
+        return list(self._task_widgets)
+
+    def swap_widgets(self, widget_a: TaskItem, widget_b: TaskItem) -> None:
+        """Swap the storage order of two widgets already in this view."""
+        i = self._task_widgets.index(widget_a)
+        j = self._task_widgets.index(widget_b)
+        self._task_widgets[i], self._task_widgets[j] = (
+            self._task_widgets[j], self._task_widgets[i],
+        )
 
     @property
     def inner_frame(self) -> tk.Frame:
@@ -603,42 +661,31 @@ class FlyNotesApp:
         if self._dragging_item is None:
             return
 
-        widgets = self._task_list.task_widgets
-        y = event.y_root
-
-        try:
-            visual_idx = widgets.index(item)
-        except ValueError:
+        visual = self._task_list.visual_order()
+        target_id = compute_reorder_target(
+            visual_ids=[w.task_id for w in visual],
+            visual_completed=[w.completed_var.get() for w in visual],
+            dragging_id=item.task_id,
+            delta_y=event.y_root - self._drag_start_y,
+            threshold=config.drag_threshold,
+            enforce_group_boundary=config.group_completed,
+        )
+        if target_id is None:
             return
 
-        direction = 0
-        if y < self._drag_start_y - config.drag_threshold and visual_idx > 0:
-            direction = -1
-        elif (
-            y > self._drag_start_y + config.drag_threshold
-            and visual_idx < len(widgets) - 1
-        ):
-            direction = 1
-
-        if direction == 0:
-            return
-
-        target_visual_idx = visual_idx + direction
+        target_widget = next(w for w in visual if w.task_id == target_id)
 
         # Resolve model indices via task_id — safe regardless of grouping
         try:
             model_idx = self.manager.index_of(item.task_id)
-            target_task_id = widgets[target_visual_idx].task_id
-            target_model_idx = self.manager.index_of(target_task_id)
+            target_model_idx = self.manager.index_of(target_id)
         except ValueError:
             return
 
         if self.manager.reorder_tasks(model_idx, target_model_idx):
-            widgets[visual_idx], widgets[target_visual_idx] = (
-                widgets[target_visual_idx], widgets[visual_idx],
-            )
+            self._task_list.swap_widgets(item, target_widget)
             self._task_list.repack()
-            self._drag_start_y = y
+            self._drag_start_y = event.y_root
 
     # ── UI State ─────────────────────────────
 
