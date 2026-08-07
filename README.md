@@ -81,9 +81,21 @@ Output:
 
 ## Platform Notes / Limitations
 
+- **Windows-only by design.** The borderless window + reliable minimize/restore
+  relies on a **Taskbar Proxy Window** technique (see `window_controller.py`)
+  built specifically around how Windows removes `overrideredirect(True)`
+  windows from the taskbar.
 - The Windows `.exe` built by PyInstaller runs **only on Windows**.
 - Transparency and borderless behavior depend on the OS/window manager.
-- Linux/macOS may run the script, but the “widget-like” behavior (topmost, alpha, borderless, taskbar behavior) may differ.
+- **Running on macOS/Linux is unsupported and untested.** The app will still
+  launch (a warning is logged), but expect broken behavior:
+  - `overrideredirect(True)` behaves differently per window manager — the
+    window may lose its taskbar/dock entry entirely, with no equivalent of
+    the Windows taskbar icon to restore it from.
+  - The taskbar-proxy minimize/restore trick assumes Windows taskbar
+    semantics and does not translate to other platforms.
+  - Dragging, resizing, and the task list itself are plain Tk and should
+    still work.
 
 ## Tech Stack
 
