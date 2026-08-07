@@ -108,7 +108,9 @@ wheels = [
 name = "fly-notes"
 version = "0.1.0"
 source = { editable = "." }
-dependencies = [
+
+[package.optional-dependencies]
+dev = [
     { name = "pyinstaller" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -116,10 +118,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pyinstaller" },
-    { name = "pytest" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "pyinstaller", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1.0" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "iniconfig"
