@@ -1,108 +1,182 @@
 # Fly Notes
 
-A minimal, floating “widget-style” task manager built with Python + Tkinter. Optimized for Windows 11: stays on top, fades when inactive, and supports reliable minimize/restore using a taskbar proxy window.
+A minimal, floating "widget-style" task manager built with Python + Tkinter.
+Optimized for Windows 11: stays on top, fades when unfocused, and supports
+reliable minimize/restore using a taskbar proxy window.
 
 ## Features
 
 - **Floating & borderless widget** (always on top)
-- **Dynamic transparency**
-  - **100% opaque** when focused
-  - **30% transparent** when unfocused
+- **Dynamic transparency** — opaque when focused, translucent when unfocused
 - **Task management**
   - Add tasks quickly (**type + Enter**)
   - Mark complete (**checkbox + strikethrough**)
   - **Drag-and-drop reorder** (drag the task label)
   - Delete tasks individually
   - **Clear completed** tasks
-- **Header-only movement**: drag the orange header to move the window
-- **Manual resizing**: drag right/bottom edges or bottom-right corner
-- **Reliable minimize/restore on Windows 11**: implemented via a **Taskbar Proxy Window** strategy
+  - Automatic grouping into "To Do" / "Completed" sections, with a
+    configurable cap on how many rows render at once
+- **Header-only movement**: drag the header bar to move the window
+- **8-direction manual resizing**: drag any edge or corner
+- **Reliable minimize/restore on Windows 11**, via a **Taskbar Proxy Window** strategy
+- **Debounced, atomic persistence** to a local `tasks.json` (survives crashes mid-write)
+- **Fully configurable** — colors, spacing, fonts, shortcuts and behavior via `config.json`
 
 ## Screens / Demo
 
-(Add a screenshot or GIF here)
+_(Add a screenshot or GIF here)_
 
 ## Requirements
 
-- **Windows 11** (primary supported experience)
-- **Python**: 3.12+ recommended (you’re currently using 3.13.x)
-- Tkinter is included with most Python installs on Windows.
+- **Windows 11** (primary supported experience — see [Platform Notes](#platform-notes--limitations))
+- **Python 3.12+**
+- Tkinter (bundled with the standard Python installer on Windows)
+- [uv](https://docs.astral.sh/uv/) (recommended for dependency/venv management — see `docs/AGENTS.md`)
 
-## Run
+## Quick Start
 
-### Option A: Run the standalone executable (recommended)
-Run:
-- `dist/FlyNotes.exe`
+### Option A: Run the prebuilt executable
 
-No installation required.
+If `dist/FlyNotes.exe` has already been built (see [Build the .exe](#build-the-exe-pyinstaller)),
+just run it directly — no installation required.
 
-### Option B: Run from source
-1. (Optional) Create and activate a virtual environment:
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\activate
-   ```
+### Option B: Run from source (uv)
 
-2. Run:
-   ```powershell
-   python fly_notes.py
-   ```
-
-> Note: You only need `pyinstaller` if you want to **build** the `.exe`.
-
-## Configuration (Theme / Opacity)
-
-Edit the global constants at the top of `fly_notes.py`:
-
-```python
-HEADER_BG = "#FF8C00"      # Title bar color
-CONTENT_BG = "#FFDAB9"     # Body background
-ITEM_BG = "#FFE4B5"        # Task row background
-
-ACTIVE_ALPHA = 1.0         # Opacity when focused
-INACTIVE_ALPHA = 0.3       # Opacity when unfocused
+```powershell
+uv sync
+uv run main.py
 ```
 
-## Build (PyInstaller)
+### Option B (alternative): Run from source (pip)
 
-### Windows
-1. Install PyInstaller:
-   ```powershell
-   pip install pyinstaller
-   ```
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+python main.py
+```
 
-2. Build:
-   ```powershell
-   pyinstaller --onefile --noconsole --name FlyNotes fly_notes.py --clean
-   ```
+## Project Structure
 
-Output:
-- `dist/FlyNotes.exe`
+```
+FLY_NOTES/
+├── main.py                    # Entry point: platform setup, logging, Tk root, mainloop
+├── fly_notes/
+│   ├── config.py              # DEFAULT_CONFIG, validation, config.json loading/merging
+│   ├── task_manager.py        # Task CRUD + debounced atomic JSON persistence (no Tkinter)
+│   ├── task_item.py           # TaskItem row widget + custom checkbox
+│   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
+│   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
+├── tests/                     # pytest suite (task manager, config, UI logic, resize geometry)
+├── docs/                      # Historical maintainability audits (issues.md, issues_v2.md, issues-v3.md)
+├── config.json                # Optional — your local overrides (not tracked; see below)
+├── tasks.json                 # Your task data (created on first run)
+├── FlyNotes.spec              # PyInstaller build spec
+└── pyproject.toml
+```
+
+## Configuration
+
+Fly Notes ships with sensible defaults (`fly_notes/config.py: DEFAULT_CONFIG`) covering
+colors, spacing, fonts, window size/behavior, keyboard shortcuts and UI strings.
+
+To customize anything, create a `config.json` file **next to `main.py`** (project root).
+You only need to include the keys you want to override — everything else falls back to
+the default. Unknown keys are ignored (with a warning logged), and invalid values
+(e.g. a malformed hex color) cause the whole file to be rejected in favor of defaults,
+so a typo can never crash the app.
+
+Example — change the accent color and default window size:
+
+```json
+{
+  "colors": {
+    "header_bg": "#2D6A4F",
+    "border_focus": "#2D6A4F"
+  },
+  "settings": {
+    "default_width": 360,
+    "default_height": 520,
+    "max_visible_tasks": 50
+  }
+}
+```
+
+Available top-level sections: `colors`, `transparency`, `spacing`, `settings`, `fonts`,
+`shortcuts`, `strings`. See `fly_notes/config.py` for the full list of keys and their
+defaults.
+
+By default, task data is stored in `tasks.json` at the project root
+(`settings.tasks_file` in config controls this path).
+
+## Development
+
+Install dev dependencies (pytest, pytest-cov, pyinstaller):
+
+```powershell
+uv sync --extra dev
+```
+
+Run the test suite:
+
+```powershell
+uv run pytest tests/ -v
+```
+
+With coverage:
+
+```powershell
+uv run pytest tests/ --cov=fly_notes --cov-report=term-missing
+```
+
+## Build the .exe (PyInstaller)
+
+### Using the provided spec (recommended)
+
+```powershell
+uv run pyinstaller FlyNotes.spec --clean
+```
+
+### Ad-hoc, without the spec file
+
+```powershell
+uv run pyinstaller --onefile --noconsole --name FlyNotes main.py --clean
+```
+
+Output: `dist/FlyNotes.exe`
+
+> **Note:** the packaged `.exe` is a PyInstaller *onefile* build — it extracts to a
+> temporary directory on each launch. `config.json`/`tasks.json` paths are resolved
+> relative to the project root when running from source; when running the frozen
+> `.exe`, place `config.json`/`tasks.json` next to the executable itself if you need
+> persistent, editable copies, or point `settings.tasks_file` at an absolute path in
+> your `config.json`.
 
 ## Platform Notes / Limitations
 
-- **Windows-only by design.** The borderless window + reliable minimize/restore
-  relies on a **Taskbar Proxy Window** technique (see `window_controller.py`)
-  built specifically around how Windows removes `overrideredirect(True)`
-  windows from the taskbar.
-- The Windows `.exe` built by PyInstaller runs **only on Windows**.
+- **Windows-only by design.** The borderless window + reliable minimize/restore relies
+  on a **Taskbar Proxy Window** technique (see `fly_notes/window_controller.py`) built
+  specifically around how Windows removes `overrideredirect(True)` windows from the
+  taskbar.
+- The `.exe` built by PyInstaller runs **only on Windows**.
 - Transparency and borderless behavior depend on the OS/window manager.
-- **Running on macOS/Linux is unsupported and untested.** The app will still
-  launch (a warning is logged), but expect broken behavior:
-  - `overrideredirect(True)` behaves differently per window manager — the
-    window may lose its taskbar/dock entry entirely, with no equivalent of
-    the Windows taskbar icon to restore it from.
-  - The taskbar-proxy minimize/restore trick assumes Windows taskbar
-    semantics and does not translate to other platforms.
-  - Dragging, resizing, and the task list itself are plain Tk and should
-    still work.
+- **Running on macOS/Linux is unsupported and untested.** The app still launches (a
+  warning is logged), but expect broken behavior:
+  - `overrideredirect(True)` behaves differently per window manager — the window may
+    lose its taskbar/dock entry entirely, with no equivalent of the Windows taskbar
+    icon to restore it from.
+  - The taskbar-proxy minimize/restore trick assumes Windows taskbar semantics and does
+    not translate to other platforms.
+  - Dragging, resizing, and the task list itself are plain Tk and should still work.
 
 ## Tech Stack
 
-- **Python**
+- **Python 3.12+**
 - **Tkinter** (built-in GUI toolkit)
-- **PyInstaller** (optional: packaging into a single executable)
-- **Windows integration**: taskbar proxy technique for consistent minimize/restore on borderless windows
+- **PyInstaller** (dev-only: packaging into a single executable)
+- **pytest / pytest-cov** (dev-only: test suite)
+- **Windows integration**: taskbar proxy technique for consistent minimize/restore on
+  borderless windows
 
 ## License
 
