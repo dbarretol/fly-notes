@@ -53,7 +53,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "checkbox_bg":          "#FFFFFF",
         "checkbox_border":      "#B0977A",
         "checkbox_hover_bg":    "#FFF0E0",
-        "scrollbar_thumb":      "#C4956A",
+        "scrollbar_thumb":      "#A8763F",
         "scrollbar_track":      "#FFF4E6",
 
         # State
@@ -94,7 +94,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "checkbox_size":        18,
         "group_completed":      True,
         "separator_height":     1,
-        "scrollbar_width":      6,
+        "scrollbar_width":      8,
     },
 
     "fonts": {

@@ -23,6 +23,26 @@ from .window_controller import WindowController
 # ─────────────────────────────────────────────
 
 
+def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:
+    """Flatten an ``#RRGGBBAA`` colour onto an opaque background.
+
+    Tk widget ``bg`` options don't accept an alpha channel, so colours like
+    ``shadow_color`` (``#00000015``) can't be used directly. This alpha-composites
+    *rgba_hex* over *background_hex* and returns a plain ``#RRGGBB`` Tk can use.
+    """
+    rgba = rgba_hex.lstrip("#")
+    if len(rgba) != 8:
+        return f"#{rgba[:6]}" if len(rgba) >= 6 else background_hex
+    r, g, b, a = (int(rgba[i:i + 2], 16) for i in (0, 2, 4, 6))
+    bg = background_hex.lstrip("#")
+    br, bgc, bb = (int(bg[i:i + 2], 16) for i in (0, 2, 4))
+    alpha = a / 255.0
+    out_r = round(r * alpha + br * (1 - alpha))
+    out_g = round(g * alpha + bgc * (1 - alpha))
+    out_b = round(b * alpha + bb * (1 - alpha))
+    return f"#{out_r:02x}{out_g:02x}{out_b:02x}"
+
+
 def compute_reorder_target(
     visual_ids: List[str],
     visual_completed: List[bool],
@@ -298,6 +318,15 @@ class TaskListView(tk.Frame):
             anchor="nw", width=config.default_width,
         )
 
+        # "More content below" indicator — shown only while scrolled above
+        # the bottom. shadow_color has an alpha channel Tk can't render
+        # directly, so it's flattened onto content_bg once at construction.
+        self._bottom_shadow = tk.Frame(
+            self, bg=blend_alpha_hex(config.shadow_color, config.content_bg),
+            height=3, bd=0, highlightthickness=0,
+        )
+        self._bottom_shadow_visible = False
+
         # Empty state label
         self._empty_label = tk.Label(
             self._inner,
@@ -485,16 +514,41 @@ class TaskListView(tk.Frame):
         bbox = self._canvas.bbox("all")
         if bbox:
             self._canvas.config(scrollregion=bbox)
+        self._sync_scroll_increment()
+
+    def _sync_scroll_increment(self) -> None:
+        """Quantize vertical scrolling to whole task rows.
+
+        Tk's canvas constrains the visible y-origin to multiples of
+        ``yscrollincrement`` for every scroll source (wheel, scrollbar
+        drag/click) — so once set, a task row can never end up rendered
+        half-visible at the bottom edge; it's always fully shown or fully
+        scrolled past.
+        """
+        if not self._task_widgets:
+            self._canvas.config(yscrollincrement=1)
+            return
+        row_height = self._task_widgets[0].winfo_reqheight() + 2 * config.spacing_xs
+        self._canvas.config(yscrollincrement=max(1, row_height))
 
     def _scrollbar_set(self, first: str, last: str) -> None:
         self._scrollbar.set(first, last)
-        needs_scroll = not (float(first) <= 0.0 and float(last) >= 1.0)
+        first_f, last_f = float(first), float(last)
+        needs_scroll = not (first_f <= 0.0 and last_f >= 1.0)
         if needs_scroll and not self._scrollbar_visible:
             self._scrollbar.pack(side="right", fill="y")
             self._scrollbar_visible = True
         elif not needs_scroll and self._scrollbar_visible:
             self._scrollbar.pack_forget()
             self._scrollbar_visible = False
+
+        show_shadow = needs_scroll and last_f < 0.999
+        if show_shadow and not self._bottom_shadow_visible:
+            self._bottom_shadow.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
+            self._bottom_shadow_visible = True
+        elif not show_shadow and self._bottom_shadow_visible:
+            self._bottom_shadow.place_forget()
+            self._bottom_shadow_visible = False
 
     def _on_mousewheel(self, event: tk.Event) -> None:
         if event.num == 4:

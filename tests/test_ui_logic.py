@@ -3,7 +3,12 @@ import tkinter as tk
 import pytest
 from fly_notes.task_item import TaskItem
 from fly_notes.task_manager import TaskManager
-from fly_notes.fly_notes_app import FlyNotesApp, TaskListView, compute_reorder_target
+from fly_notes.fly_notes_app import (
+    FlyNotesApp,
+    TaskListView,
+    blend_alpha_hex,
+    compute_reorder_target,
+)
 from fly_notes.window_controller import WindowController
 from fly_notes.config import config
 
@@ -209,3 +214,101 @@ def test_resize_callback_receives_width_without_stale_reread(root):
     finally:
         root.withdraw()
         ctrl._proxy.destroy()
+
+
+# ── Scroll affordance (issues-v4 #2) ─────────
+
+def test_blend_alpha_hex_flattens_alpha_onto_background():
+    """shadow_color (#00000015, ~8% black) over a white background should
+    land close to white, tinted slightly darker — not pure black and not
+    unchanged."""
+    result = blend_alpha_hex("#00000015", "#FFFFFF")
+    r, g, b = int(result[1:3], 16), int(result[3:5], 16), int(result[5:7], 16)
+    assert r == g == b
+    assert 220 < r < 255  # slightly darkened, not unchanged, not black
+
+
+def test_blend_alpha_hex_passes_through_opaque_colors():
+    assert blend_alpha_hex("#B35C00", "#FFFFFF") == "#B35C00"
+
+
+def test_scrollbar_activates_when_content_exceeds_visible_height(root):
+    """With enough tasks to overflow a short window, the scrollbar must
+    become visible (packed) — regression coverage for the '+11 tasks,
+    scrollbar barely perceptible' finding in issues-v4 #2."""
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x150+0+0")
+        task_list = TaskListView(win)
+        task_list.pack(fill="both", expand=True)
+        win.update_idletasks()
+
+        widgets = []
+        for i in range(20):
+            w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+            task_list.add_widget(w)
+            widgets.append(w)
+        task_list.repack()
+        win.update_idletasks()
+
+        assert task_list._scrollbar_visible is True
+        assert task_list._scrollbar.winfo_manager() == "pack"
+
+        for w in widgets:
+            w.destroy()
+        task_list.destroy()
+    finally:
+        win.destroy()
+
+
+def test_scrollbar_stays_hidden_when_content_fits(root):
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x440+0+0")
+        task_list = TaskListView(win)
+        task_list.pack(fill="both", expand=True)
+        win.update_idletasks()
+
+        widgets = []
+        for i in range(2):
+            w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+            task_list.add_widget(w)
+            widgets.append(w)
+        task_list.repack()
+        win.update_idletasks()
+
+        assert task_list._scrollbar_visible is False
+
+        for w in widgets:
+            w.destroy()
+        task_list.destroy()
+    finally:
+        win.destroy()
+
+
+def test_scroll_increment_matches_task_row_height_to_prevent_split_rows(root):
+    """yscrollincrement must equal a whole task row's footprint, so Tk's
+    canvas can never leave a row rendered half-visible at the viewport
+    edge (see issues-v4 #2: last row cut in half with no affordance)."""
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x150+0+0")
+        task_list = TaskListView(win)
+        task_list.pack(fill="both", expand=True)
+
+        widgets = []
+        for i in range(10):
+            w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+            task_list.add_widget(w)
+            widgets.append(w)
+        task_list.repack()
+        win.update_idletasks()
+
+        expected = widgets[0].winfo_reqheight() + 2 * config.spacing_xs
+        assert int(task_list._canvas["yscrollincrement"]) == expected
+
+        for w in widgets:
+            w.destroy()
+        task_list.destroy()
+    finally:
+        win.destroy()
