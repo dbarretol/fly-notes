@@ -731,8 +731,8 @@ class FlyNotesApp:
         )
         self._task_list.repack()
 
-    def _on_window_resize(self) -> None:
-        self._task_list.update_canvas_width(self.root.winfo_width())
+    def _on_window_resize(self, new_width: int) -> None:
+        self._task_list.update_canvas_width(new_width)
 
     def _handle_error_threadsafe(self, message: str) -> None:
         """Schedule error dialog on the main Tkinter thread."""

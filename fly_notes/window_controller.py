@@ -119,7 +119,7 @@ class WindowController:
 
     Usage::
 
-        ctrl = WindowController(root, on_resize_callback=my_callback)
+        ctrl = WindowController(root, on_resize_callback=my_callback)  # my_callback(new_width: int)
         ctrl.bind_drag(header_widget)
         ctrl.setup_resize_handles(bg_color)
     """
@@ -129,7 +129,7 @@ class WindowController:
     def __init__(
         self,
         root: tk.Tk,
-        on_resize_callback: Optional[Callable[[], None]] = None,
+        on_resize_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
         self._warn_if_unsupported_platform()
         self.root = root
@@ -250,7 +250,12 @@ class WindowController:
         self.root.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
 
         if self.on_resize_callback:
-            self.on_resize_callback()
+            # Pass new_w directly rather than letting the callback re-read
+            # root.winfo_width(): immediately after geometry(), Tk hasn't
+            # processed the pending configure request yet, so a re-read
+            # without update_idletasks() reliably returns the *previous*
+            # width (confirmed empirically — see docs/issues-v3.md #5).
+            self.on_resize_callback(new_w)
 
     def _stop_resize(self, event: tk.Event) -> None:
         self._is_resizing = False

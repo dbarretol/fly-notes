@@ -4,6 +4,7 @@ import pytest
 from fly_notes.task_item import TaskItem
 from fly_notes.task_manager import TaskManager
 from fly_notes.fly_notes_app import FlyNotesApp, TaskListView, compute_reorder_target
+from fly_notes.window_controller import WindowController
 from fly_notes.config import config
 
 @pytest.fixture(scope="session")
@@ -175,3 +176,36 @@ def test_repack_caps_rendered_rows_to_max_visible_tasks(root):
         for w in widgets:
             w.destroy()
         task_list.destroy()
+
+
+# ── Resize callback width (Issue #5) ─────────
+
+def test_resize_callback_receives_width_without_stale_reread(root):
+    """Regression for the winfo_width()-lag issue: immediately after
+    root.geometry(...), winfo_width() reliably returns the *previous*
+    width until Tk processes the pending configure request (empirically
+    confirmed: ~399/400 mismatches in a tight resize loop without
+    update_idletasks(), see docs/issues-v3.md #5). The fix has
+    WindowController hand the freshly computed width to the resize
+    callback directly instead of the callback re-reading root."""
+    received = []
+    ctrl = WindowController(root, on_resize_callback=received.append)
+    try:
+        # A withdrawn window's geometry is never negotiated by the WM, so
+        # winfo_width() would report a meaningless placeholder regardless
+        # of update_idletasks(). Deiconify to reproduce the real scenario
+        # (the app's root window is always mapped/visible).
+        root.deiconify()
+        root.geometry("320x440+100+100")
+        root.update_idletasks()
+
+        ctrl._start_resize("e", types.SimpleNamespace(x_root=500, y_root=500))
+        ctrl._do_resize(types.SimpleNamespace(x_root=560, y_root=500))  # +60px east
+
+        assert received == [380]
+
+        root.update_idletasks()
+        assert root.winfo_width() == 380
+    finally:
+        root.withdraw()
+        ctrl._proxy.destroy()
