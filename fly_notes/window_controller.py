@@ -31,7 +31,7 @@ import sys
 import tkinter as tk
 from typing import Callable, Optional, Tuple
 
-from .config import config
+from .config import ICON_PATH, config
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,7 @@ class WindowController:
         self._proxy_programmatic: bool = False
         self._proxy: Optional[tk.Toplevel] = None
         self._setup_taskbar_proxy()
+        self._apply_icon()
 
     @staticmethod
     def _warn_if_unsupported_platform() -> None:
@@ -311,3 +312,22 @@ class WindowController:
 
     def _clear_proxy_flag(self) -> None:
         self._proxy_programmatic = False
+
+    # ── Window icon ──────────────────────────
+
+    def _apply_icon(self) -> None:
+        """Set the same custom icon on the main window and the taskbar proxy.
+
+        Without this, both show Tk's generic feather icon — the proxy is
+        what actually renders in the Windows taskbar/alt-tab, so it needs
+        the icon just as much as the main window does.
+        """
+        if not ICON_PATH.exists():
+            logger.warning("Window icon not found at %s — using Tk default", ICON_PATH)
+            return
+        try:
+            self.root.iconbitmap(default=str(ICON_PATH))
+            if self._proxy is not None:
+                self._proxy.iconbitmap(default=str(ICON_PATH))
+        except tk.TclError:
+            logger.warning("Could not apply window icon from %s", ICON_PATH)

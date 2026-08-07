@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Set, Tuple
 
@@ -18,6 +19,12 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent
 CONFIG_FILE = _PROJECT_ROOT / "config.json"
 DEFAULT_TASKS_FILE = _PROJECT_ROOT / "tasks.json"
+
+# When frozen by PyInstaller, bundled data (see FlyNotes.spec's `datas`)
+# is extracted to sys._MEIPASS at runtime instead of living next to the
+# source tree.
+_ASSETS_ROOT = Path(getattr(sys, "_MEIPASS", _PROJECT_ROOT))
+ICON_PATH = _ASSETS_ROOT / "assets" / "fly_notes.ico"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "colors": {

@@ -1,5 +1,7 @@
+import logging
 import types
 import tkinter as tk
+from pathlib import Path
 import pytest
 from fly_notes.task_item import TaskItem
 from fly_notes.task_manager import TaskManager
@@ -9,8 +11,9 @@ from fly_notes.fly_notes_app import (
     blend_alpha_hex,
     compute_reorder_target,
 )
+from fly_notes import window_controller as window_controller_module
 from fly_notes.window_controller import WindowController
-from fly_notes.config import config
+from fly_notes.config import ICON_PATH, config
 
 @pytest.fixture(scope="session")
 def root():
@@ -469,3 +472,40 @@ def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
         for w in widgets:
             w.destroy()
         task_list.destroy()
+
+
+# ── Window icon (issues-v4 #5) ───────────────
+
+def test_icon_path_resolves_to_an_existing_bundled_asset():
+    """Regression for 'no window icon': the .ico referenced by
+    WindowController/FlyNotes.spec must actually exist in the repo, not
+    just be a path computed on faith."""
+    assert ICON_PATH.exists()
+    assert ICON_PATH.suffix == ".ico"
+
+
+def test_window_controller_applies_icon_to_root_and_proxy_without_raising(root):
+    ctrl = WindowController(root)
+    try:
+        # Tk's `wm iconbitmap` query doesn't reliably echo back the path
+        # that was set via `default=`, so the meaningful contract here is
+        # "construction with a real icon file doesn't raise" -- exercised
+        # by simply reaching this point.
+        assert ctrl._proxy is not None
+    finally:
+        root.withdraw()
+        ctrl._proxy.destroy()
+
+
+def test_window_controller_missing_icon_warns_and_does_not_raise(root, monkeypatch, caplog):
+    """If the .ico asset is missing (e.g. a broken PyInstaller bundle),
+    the app must still start -- degrade with a logged warning, not a
+    crash, matching this module's existing platform-warning philosophy."""
+    monkeypatch.setattr(window_controller_module, "ICON_PATH", Path("does/not/exist.ico"))
+    with caplog.at_level(logging.WARNING):
+        ctrl = WindowController(root)
+    try:
+        assert any("icon" in rec.message.lower() for rec in caplog.records)
+    finally:
+        root.withdraw()
+        ctrl._proxy.destroy()
