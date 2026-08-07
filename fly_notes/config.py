@@ -35,6 +35,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "text_completed":       "#6B5B4E",
         "text_on_header":       "#FFFFFF",
         "text_placeholder":     "#8C7E72",
+        "section_header":       "#8B4500",
 
         # Interactive
         "border_color":         "#D4B896",
@@ -104,7 +105,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "footer":       ["Segoe UI", 9],
         "empty_hint":   ["Segoe UI", 10, "italic"],
         "badge":        ["Segoe UI", 8, "bold"],
-        "section":      ["Segoe UI", 8],
+        "section":      ["Segoe UI", 9, "bold"],
     },
 
     "shortcuts": {
@@ -203,6 +204,7 @@ _CONTRAST_PAIRS: list[Tuple[str, str, float]] = [
     ("text_completed",   "item_bg_completed", 4.5),
     ("text_on_header",   "header_bg",         4.5),
     ("text_secondary",   "content_bg",        4.5),
+    ("section_header",   "content_bg",        4.5),
     ("text_placeholder", "item_bg",           3.0),
     ("link_color",       "footer_bg",         4.5),
     ("empty_state_fg",   "content_bg",        3.0),

@@ -406,3 +406,66 @@ def test_task_item_card_resizes_with_row_width(root):
         item.destroy()
     finally:
         win.destroy()
+
+
+# ── Section header hierarchy (issues-v4 #4) ──
+
+def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_path):
+    """Regression for 'headers look like secondary body text': pending/
+    completed section headers must render uppercase, in font_section
+    (now bold), and in the dedicated section_header colour -- distinct
+    from the plain text_secondary/font_footer '+N more' hint."""
+    manager = TaskManager(tasks_file=str(tmp_path / "tasks.json"))
+    task_a = manager.add_task("Pending A")
+    task_b = manager.add_task("Done B", completed=True)
+
+    task_list = TaskListView(root)
+    widgets = []
+    for t in (task_a, task_b):
+        w = TaskItem(task_list.inner_frame, task_id=t["id"], text=t["text"], completed=t["completed"])
+        task_list.add_widget(w)
+        widgets.append(w)
+    task_list.repack()
+
+    labels = [w for w in task_list._transient_widgets if isinstance(w, tk.Label)]
+    texts = {lbl.cget("text") for lbl in labels}
+    assert "TO DO (1)" in texts
+    assert "COMPLETED (1)" in texts
+    for lbl in labels:
+        assert lbl.cget("fg") == config.section_header
+        assert "bold" in str(lbl.cget("font"))
+
+    for w in widgets:
+        w.destroy()
+    task_list.destroy()
+
+
+def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
+    """The '+N more' hint is a meta note, not a structural separator --
+    it must stay lowercase and use text_secondary/font_footer, not the
+    bold uppercase section_header treatment."""
+    task_list = TaskListView(root)
+    widgets = []
+    for i in range(5):
+        w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+        task_list.add_widget(w)
+        widgets.append(w)
+
+    original_limit = config._data["settings"]["max_visible_tasks"]
+    config._data["settings"]["max_visible_tasks"] = 3
+    config._attr_cache.pop("max_visible_tasks", None)
+    try:
+        task_list.repack()
+        more_label = next(
+            w for w in task_list._transient_widgets
+            if isinstance(w, tk.Label) and "more" in w.cget("text")
+        )
+        assert more_label.cget("text") == config.string("more_hidden", count=2)
+        assert more_label.cget("fg") == config.text_secondary
+        assert "bold" not in str(more_label.cget("font"))
+    finally:
+        config._data["settings"]["max_visible_tasks"] = original_limit
+        config._attr_cache.pop("max_visible_tasks", None)
+        for w in widgets:
+            w.destroy()
+        task_list.destroy()

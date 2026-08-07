@@ -393,9 +393,16 @@ class TaskListView(tk.Frame):
             self._pack_flat(visible)
 
         if hidden_count:
-            more_label = self._make_section_label(
-                config.string("more_hidden", count=hidden_count)
+            # Deliberately not routed through _make_section_label: this is a
+            # meta hint, not a structural section separator, so it keeps the
+            # plain text_secondary/footer styling rather than the bold
+            # uppercase header treatment (see issues-v4 #4).
+            more_label = tk.Label(
+                self._inner, text=config.string("more_hidden", count=hidden_count),
+                fg=config.text_secondary, bg=config.content_bg,
+                font=config.font_footer, anchor="w",
             )
+            self._transient_widgets.append(more_label)
             more_label.pack(
                 fill="x", padx=config.spacing_xl,
                 pady=(config.spacing_xs, config.spacing_xs),
@@ -475,9 +482,13 @@ class TaskListView(tk.Frame):
                 w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
     def _make_section_label(self, text: str) -> tk.Label:
+        # Uppercase is the "letter-spacing" simulation Tk can't do natively
+        # (no real tracking support) — combined with the bold, larger
+        # font_section and the dedicated section_header colour, it gives
+        # section separators more visual weight than the 11pt body text.
         lbl = tk.Label(
-            self._inner, text=text,
-            fg=config.text_secondary, bg=config.content_bg,
+            self._inner, text=text.upper(),
+            fg=config.section_header, bg=config.content_bg,
             font=config.font_section, anchor="w",
         )
         self._transient_widgets.append(lbl)
