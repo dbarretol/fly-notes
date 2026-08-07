@@ -3,15 +3,37 @@ Borderless-window controller — dragging, 8-direction resizing, taskbar proxy.
 
 Handles all platform-specific quirks for a frameless, always-on-top
 Tk window that still appears in the OS taskbar.
+
+Platform support: **Windows-only by design.** The taskbar-proxy trick in
+``_setup_taskbar_proxy``/``minimize_window`` exists specifically to work
+around ``overrideredirect(True)`` removing the window from the Windows
+taskbar. On macOS/Linux window managers, ``overrideredirect`` behaves
+differently (often no taskbar entry at all, or different reparenting/
+decoration rules per WM), so:
+
+- The hidden proxy ``Toplevel`` still gets created (harmless), but it does
+  not reliably restore the real window on those platforms — there may be
+  no taskbar icon to click in the first place.
+- Minimize/restore behavior is untested and unsupported outside Windows.
+
+No hard guard blocks construction on other platforms (see
+``_warn_if_unsupported_platform``) — the rest of the app (dragging,
+resizing, task list) still works, and failing hard would break local
+development/testing on non-Windows machines for no functional benefit.
+A warning is logged instead so the degraded behavior is visible rather
+than silent.
 """
 
 from __future__ import annotations
 
+import logging
 import sys
 import tkinter as tk
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
-from .config import config
+from .config import ICON_PATH, config
+
+logger = logging.getLogger(__name__)
 
 _CURSOR_MAP = {
     "n":  "sb_v_double_arrow",
@@ -37,12 +59,67 @@ _EDGE_EFFECTS = {
 }
 
 
+def compute_resize_geometry(
+    edge: str,
+    dx: int,
+    dy: int,
+    start_w: int,
+    start_h: int,
+    start_win_x: int,
+    start_win_y: int,
+    min_width: int,
+    min_height: int,
+) -> Tuple[int, int, int, int]:
+    """Pure geometry calculation for 8-direction borderless window resize.
+
+    Given the drag edge, the pointer displacement since the drag started
+    (*dx*, *dy*), the window's starting size/position, and the minimum
+    allowed size, return the new ``(x, y, w, h)`` — clamped to
+    *min_width*/*min_height* — with no dependency on Tkinter, so it can
+    be unit-tested without a real display.
+    """
+    new_x, new_y = start_win_x, start_win_y
+    new_w, new_h = start_w, start_h
+
+    affects_w, affects_h, moves_x, moves_y = _EDGE_EFFECTS[edge]
+
+    if affects_w:
+        if moves_x:
+            # West edge: growing = negative dx
+            proposed_w = start_w - dx
+            if proposed_w >= min_width:
+                new_w = proposed_w
+                new_x = start_win_x + dx
+            else:
+                new_w = min_width
+                new_x = start_win_x + (start_w - min_width)
+        else:
+            # East edge: growing = positive dx
+            new_w = max(min_width, start_w + dx)
+
+    if affects_h:
+        if moves_y:
+            # North edge: growing = negative dy
+            proposed_h = start_h - dy
+            if proposed_h >= min_height:
+                new_h = proposed_h
+                new_y = start_win_y + dy
+            else:
+                new_h = min_height
+                new_y = start_win_y + (start_h - min_height)
+        else:
+            # South edge: growing = positive dy
+            new_h = max(min_height, start_h + dy)
+
+    return new_x, new_y, new_w, new_h
+
+
 class WindowController:
     """Manages borderless-window dragging, 8-direction resizing and taskbar proxy.
 
     Usage::
 
-        ctrl = WindowController(root, on_resize_callback=my_callback)
+        ctrl = WindowController(root, on_resize_callback=my_callback)  # my_callback(new_width: int)
         ctrl.bind_drag(header_widget)
         ctrl.setup_resize_handles(bg_color)
     """
@@ -52,8 +129,9 @@ class WindowController:
     def __init__(
         self,
         root: tk.Tk,
-        on_resize_callback: Optional[Callable[[], None]] = None,
+        on_resize_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
+        self._warn_if_unsupported_platform()
         self.root = root
         self.on_resize_callback = on_resize_callback
 
@@ -79,6 +157,23 @@ class WindowController:
         self._proxy_programmatic: bool = False
         self._proxy: Optional[tk.Toplevel] = None
         self._setup_taskbar_proxy()
+        self._apply_icon()
+
+    @staticmethod
+    def _warn_if_unsupported_platform() -> None:
+        """Log (not raise) when running outside the only supported platform.
+
+        See the module docstring: the taskbar-proxy minimize/restore trick
+        is Windows-only by design. No hard guard here — the rest of the
+        app remains usable on other platforms.
+        """
+        if sys.platform != "win32":
+            logger.warning(
+                "WindowController: running on %r, not 'win32'. Borderless "
+                "minimize/restore via taskbar proxy is Windows-only and may "
+                "not work correctly on this platform.",
+                sys.platform,
+            )
 
     # ── Dragging ─────────────────────────────
 
@@ -141,47 +236,27 @@ class WindowController:
         if not self._is_resizing:
             return
 
-        dx = event.x_root - self._start_x
-        dy = event.y_root - self._start_y
-        edge = self._resize_edge
-
-        new_x, new_y = self._start_win_x, self._start_win_y
-        new_w, new_h = self._start_w, self._start_h
-
-        affects_w, affects_h, moves_x, moves_y = _EDGE_EFFECTS[edge]
-
-        if affects_w:
-            if moves_x:
-                # West edge: growing = negative dx
-                proposed_w = self._start_w - dx
-                if proposed_w >= config.min_width:
-                    new_w = proposed_w
-                    new_x = self._start_win_x + dx
-                else:
-                    new_w = config.min_width
-                    new_x = self._start_win_x + (self._start_w - config.min_width)
-            else:
-                # East edge: growing = positive dx
-                new_w = max(config.min_width, self._start_w + dx)
-
-        if affects_h:
-            if moves_y:
-                # North edge: growing = negative dy
-                proposed_h = self._start_h - dy
-                if proposed_h >= config.min_height:
-                    new_h = proposed_h
-                    new_y = self._start_win_y + dy
-                else:
-                    new_h = config.min_height
-                    new_y = self._start_win_y + (self._start_h - config.min_height)
-            else:
-                # South edge: growing = positive dy
-                new_h = max(config.min_height, self._start_h + dy)
+        new_x, new_y, new_w, new_h = compute_resize_geometry(
+            edge=self._resize_edge,
+            dx=event.x_root - self._start_x,
+            dy=event.y_root - self._start_y,
+            start_w=self._start_w,
+            start_h=self._start_h,
+            start_win_x=self._start_win_x,
+            start_win_y=self._start_win_y,
+            min_width=config.min_width,
+            min_height=config.min_height,
+        )
 
         self.root.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
 
         if self.on_resize_callback:
-            self.on_resize_callback()
+            # Pass new_w directly rather than letting the callback re-read
+            # root.winfo_width(): immediately after geometry(), Tk hasn't
+            # processed the pending configure request yet, so a re-read
+            # without update_idletasks() reliably returns the *previous*
+            # width (confirmed empirically — see docs/issues-v3.md #5).
+            self.on_resize_callback(new_w)
 
     def _stop_resize(self, event: tk.Event) -> None:
         self._is_resizing = False
@@ -237,3 +312,22 @@ class WindowController:
 
     def _clear_proxy_flag(self) -> None:
         self._proxy_programmatic = False
+
+    # ── Window icon ──────────────────────────
+
+    def _apply_icon(self) -> None:
+        """Set the same custom icon on the main window and the taskbar proxy.
+
+        Without this, both show Tk's generic feather icon — the proxy is
+        what actually renders in the Windows taskbar/alt-tab, so it needs
+        the icon just as much as the main window does.
+        """
+        if not ICON_PATH.exists():
+            logger.warning("Window icon not found at %s — using Tk default", ICON_PATH)
+            return
+        try:
+            self.root.iconbitmap(default=str(ICON_PATH))
+            if self._proxy is not None:
+                self._proxy.iconbitmap(default=str(ICON_PATH))
+        except tk.TclError:
+            logger.warning("Could not apply window icon from %s", ICON_PATH)

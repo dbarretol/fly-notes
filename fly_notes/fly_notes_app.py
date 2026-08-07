@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from .config import config
+from .config import blend_alpha_hex, config
 from .task_item import TaskItem
 from .task_manager import TaskManager
 from .window_controller import WindowController
@@ -21,6 +21,42 @@ from .window_controller import WindowController
 # ─────────────────────────────────────────────
 # Sub-components extracted from the monolithic class
 # ─────────────────────────────────────────────
+
+
+def compute_reorder_target(
+    visual_ids: List[str],
+    visual_completed: List[bool],
+    dragging_id: str,
+    delta_y: int,
+    threshold: int,
+    enforce_group_boundary: bool = True,
+) -> Optional[str]:
+    """Pure decision logic for drag-and-drop reordering.
+
+    Given the *visually rendered* order of task ids (and their completed
+    flag in that same order), the id of the task being dragged, and the
+    vertical distance dragged since the gesture started, return the id
+    of the neighboring task to swap with — or ``None`` if no swap should
+    happen (below threshold, at the edge of the list, or the swap would
+    cross the pending/completed group boundary).
+    """
+    try:
+        idx = visual_ids.index(dragging_id)
+    except ValueError:
+        return None
+
+    if delta_y < -threshold and idx > 0:
+        direction = -1
+    elif delta_y > threshold and idx < len(visual_ids) - 1:
+        direction = 1
+    else:
+        return None
+
+    target_idx = idx + direction
+    if enforce_group_boundary and visual_completed[target_idx] != visual_completed[idx]:
+        return None
+
+    return visual_ids[target_idx]
 
 
 class HeaderBar(tk.Frame):
@@ -262,6 +298,15 @@ class TaskListView(tk.Frame):
             anchor="nw", width=config.default_width,
         )
 
+        # "More content below" indicator — shown only while scrolled above
+        # the bottom. shadow_color has an alpha channel Tk can't render
+        # directly, so it's flattened onto content_bg once at construction.
+        self._bottom_shadow = tk.Frame(
+            self, bg=blend_alpha_hex(config.shadow_color, config.content_bg),
+            height=3, bd=0, highlightthickness=0,
+        )
+        self._bottom_shadow_visible = False
+
         # Empty state label
         self._empty_label = tk.Label(
             self._inner,
@@ -280,7 +325,29 @@ class TaskListView(tk.Frame):
 
     @property
     def task_widgets(self) -> List[TaskItem]:
-        return self._task_widgets
+        """Return a copy of the insertion-order widget list."""
+        return list(self._task_widgets)
+
+    def visual_order(self) -> List[TaskItem]:
+        """Return widgets in the order they are actually rendered.
+
+        Mirrors ``_pack_grouped``/``_pack_flat``: when grouping is
+        enabled, pending widgets come first, then completed ones; each
+        group otherwise keeps insertion order.
+        """
+        if config.group_completed:
+            pending = [w for w in self._task_widgets if not w.completed_var.get()]
+            completed = [w for w in self._task_widgets if w.completed_var.get()]
+            return pending + completed
+        return list(self._task_widgets)
+
+    def swap_widgets(self, widget_a: TaskItem, widget_b: TaskItem) -> None:
+        """Swap the storage order of two widgets already in this view."""
+        i = self._task_widgets.index(widget_a)
+        j = self._task_widgets.index(widget_b)
+        self._task_widgets[i], self._task_widgets[j] = (
+            self._task_widgets[j], self._task_widgets[i],
+        )
 
     @property
     def inner_frame(self) -> tk.Frame:
@@ -289,7 +356,7 @@ class TaskListView(tk.Frame):
     def add_widget(self, widget: TaskItem) -> None:
         self._task_widgets.append(widget)
         # Propagate scroll events
-        for child in (widget, widget.label, widget.check, widget.delete_btn):
+        for child in (widget, widget.card_canvas, widget.label, widget.check, widget.delete_btn):
             child.bind("<MouseWheel>", self._on_mousewheel)
             child.bind("<Button-4>", self._on_mousewheel)
             child.bind("<Button-5>", self._on_mousewheel)
@@ -318,10 +385,28 @@ class TaskListView(tk.Frame):
             self._update_scroll_region()
             return
 
+        visible, hidden_count = self._visible_widgets()
+
         if config.group_completed:
-            self._pack_grouped()
+            self._pack_grouped(visible)
         else:
-            self._pack_flat()
+            self._pack_flat(visible)
+
+        if hidden_count:
+            # Deliberately not routed through _make_section_label: this is a
+            # meta hint, not a structural section separator, so it keeps the
+            # plain text_secondary/footer styling rather than the bold
+            # uppercase header treatment (see issues-v4 #4).
+            more_label = tk.Label(
+                self._inner, text=config.string("more_hidden", count=hidden_count),
+                fg=config.text_secondary, bg=config.content_bg,
+                font=config.font_footer, anchor="w",
+            )
+            self._transient_widgets.append(more_label)
+            more_label.pack(
+                fill="x", padx=config.spacing_xl,
+                pady=(config.spacing_xs, config.spacing_xs),
+            )
 
         # Bottom spacer
         spacer = tk.Frame(self._inner, bg=config.content_bg, height=config.spacing_lg, bd=0)
@@ -337,7 +422,21 @@ class TaskListView(tk.Frame):
 
     # ── Private helpers ──────────────────────
 
-    def _pack_grouped(self) -> None:
+    def _visible_widgets(self) -> Tuple[List[TaskItem], int]:
+        """Cap the rendered widgets at ``config.max_visible_tasks``.
+
+        Applied to the *visual* (post-grouping) order, as one combined
+        cap across both groups. Returns the widgets to render and how
+        many were left out.
+        """
+        visual = self.visual_order()
+        limit = config.max_visible_tasks
+        if len(visual) <= limit:
+            return visual, 0
+        return visual[:limit], len(visual) - limit
+
+    def _pack_grouped(self, visible: List[TaskItem]) -> None:
+        visible_set = set(visible)
         pending = [w for w in self._task_widgets if not w.completed_var.get()]
         completed = [w for w in self._task_widgets if w.completed_var.get()]
 
@@ -350,7 +449,8 @@ class TaskListView(tk.Frame):
                 pady=(config.spacing_md, config.spacing_xs),
             )
         for w in pending:
-            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+            if w in visible_set:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
         if completed:
             if pending:
@@ -372,16 +472,23 @@ class TaskListView(tk.Frame):
                 pady=(config.spacing_xs, config.spacing_xs),
             )
             for w in completed:
+                if w in visible_set:
+                    w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+
+    def _pack_flat(self, visible: List[TaskItem]) -> None:
+        visible_set = set(visible)
+        for w in self._task_widgets:
+            if w in visible_set:
                 w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
-    def _pack_flat(self) -> None:
-        for w in self._task_widgets:
-            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
-
     def _make_section_label(self, text: str) -> tk.Label:
+        # Uppercase is the "letter-spacing" simulation Tk can't do natively
+        # (no real tracking support) — combined with the bold, larger
+        # font_section and the dedicated section_header colour, it gives
+        # section separators more visual weight than the 11pt body text.
         lbl = tk.Label(
-            self._inner, text=text,
-            fg=config.text_secondary, bg=config.content_bg,
+            self._inner, text=text.upper(),
+            fg=config.section_header, bg=config.content_bg,
             font=config.font_section, anchor="w",
         )
         self._transient_widgets.append(lbl)
@@ -398,16 +505,41 @@ class TaskListView(tk.Frame):
         bbox = self._canvas.bbox("all")
         if bbox:
             self._canvas.config(scrollregion=bbox)
+        self._sync_scroll_increment()
+
+    def _sync_scroll_increment(self) -> None:
+        """Quantize vertical scrolling to whole task rows.
+
+        Tk's canvas constrains the visible y-origin to multiples of
+        ``yscrollincrement`` for every scroll source (wheel, scrollbar
+        drag/click) — so once set, a task row can never end up rendered
+        half-visible at the bottom edge; it's always fully shown or fully
+        scrolled past.
+        """
+        if not self._task_widgets:
+            self._canvas.config(yscrollincrement=1)
+            return
+        row_height = self._task_widgets[0].winfo_reqheight() + 2 * config.spacing_xs
+        self._canvas.config(yscrollincrement=max(1, row_height))
 
     def _scrollbar_set(self, first: str, last: str) -> None:
         self._scrollbar.set(first, last)
-        needs_scroll = not (float(first) <= 0.0 and float(last) >= 1.0)
+        first_f, last_f = float(first), float(last)
+        needs_scroll = not (first_f <= 0.0 and last_f >= 1.0)
         if needs_scroll and not self._scrollbar_visible:
             self._scrollbar.pack(side="right", fill="y")
             self._scrollbar_visible = True
         elif not needs_scroll and self._scrollbar_visible:
             self._scrollbar.pack_forget()
             self._scrollbar_visible = False
+
+        show_shadow = needs_scroll and last_f < 0.999
+        if show_shadow and not self._bottom_shadow_visible:
+            self._bottom_shadow.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
+            self._bottom_shadow_visible = True
+        elif not show_shadow and self._bottom_shadow_visible:
+            self._bottom_shadow.place_forget()
+            self._bottom_shadow_visible = False
 
     def _on_mousewheel(self, event: tk.Event) -> None:
         if event.num == 4:
@@ -603,42 +735,31 @@ class FlyNotesApp:
         if self._dragging_item is None:
             return
 
-        widgets = self._task_list.task_widgets
-        y = event.y_root
-
-        try:
-            visual_idx = widgets.index(item)
-        except ValueError:
+        visual = self._task_list.visual_order()
+        target_id = compute_reorder_target(
+            visual_ids=[w.task_id for w in visual],
+            visual_completed=[w.completed_var.get() for w in visual],
+            dragging_id=item.task_id,
+            delta_y=event.y_root - self._drag_start_y,
+            threshold=config.drag_threshold,
+            enforce_group_boundary=config.group_completed,
+        )
+        if target_id is None:
             return
 
-        direction = 0
-        if y < self._drag_start_y - config.drag_threshold and visual_idx > 0:
-            direction = -1
-        elif (
-            y > self._drag_start_y + config.drag_threshold
-            and visual_idx < len(widgets) - 1
-        ):
-            direction = 1
-
-        if direction == 0:
-            return
-
-        target_visual_idx = visual_idx + direction
+        target_widget = next(w for w in visual if w.task_id == target_id)
 
         # Resolve model indices via task_id — safe regardless of grouping
         try:
             model_idx = self.manager.index_of(item.task_id)
-            target_task_id = widgets[target_visual_idx].task_id
-            target_model_idx = self.manager.index_of(target_task_id)
+            target_model_idx = self.manager.index_of(target_id)
         except ValueError:
             return
 
         if self.manager.reorder_tasks(model_idx, target_model_idx):
-            widgets[visual_idx], widgets[target_visual_idx] = (
-                widgets[target_visual_idx], widgets[visual_idx],
-            )
+            self._task_list.swap_widgets(item, target_widget)
             self._task_list.repack()
-            self._drag_start_y = y
+            self._drag_start_y = event.y_root
 
     # ── UI State ─────────────────────────────
 
@@ -655,8 +776,8 @@ class FlyNotesApp:
         )
         self._task_list.repack()
 
-    def _on_window_resize(self) -> None:
-        self._task_list.update_canvas_width(self.root.winfo_width())
+    def _on_window_resize(self, new_width: int) -> None:
+        self._task_list.update_canvas_width(new_width)
 
     def _handle_error_threadsafe(self, message: str) -> None:
         """Schedule error dialog on the main Tkinter thread."""

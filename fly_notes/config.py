@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Set, Tuple
 
@@ -18,6 +19,12 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent
 CONFIG_FILE = _PROJECT_ROOT / "config.json"
 DEFAULT_TASKS_FILE = _PROJECT_ROOT / "tasks.json"
+
+# When frozen by PyInstaller, bundled data (see FlyNotes.spec's `datas`)
+# is extracted to sys._MEIPASS at runtime instead of living next to the
+# source tree.
+_ASSETS_ROOT = Path(getattr(sys, "_MEIPASS", _PROJECT_ROOT))
+ICON_PATH = _ASSETS_ROOT / "assets" / "fly_notes.ico"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "colors": {
@@ -35,6 +42,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "text_completed":       "#6B5B4E",
         "text_on_header":       "#FFFFFF",
         "text_placeholder":     "#8C7E72",
+        "section_header":       "#8B4500",
 
         # Interactive
         "border_color":         "#D4B896",
@@ -53,7 +61,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "checkbox_bg":          "#FFFFFF",
         "checkbox_border":      "#B0977A",
         "checkbox_hover_bg":    "#FFF0E0",
-        "scrollbar_thumb":      "#C4956A",
+        "scrollbar_thumb":      "#A8763F",
         "scrollbar_track":      "#FFF4E6",
 
         # State
@@ -94,7 +102,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "checkbox_size":        18,
         "group_completed":      True,
         "separator_height":     1,
-        "scrollbar_width":      6,
+        "scrollbar_width":      8,
     },
 
     "fonts": {
@@ -104,7 +112,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "footer":       ["Segoe UI", 9],
         "empty_hint":   ["Segoe UI", 10, "italic"],
         "badge":        ["Segoe UI", 8, "bold"],
-        "section":      ["Segoe UI", 8],
+        "section":      ["Segoe UI", 9, "bold"],
     },
 
     "shortcuts": {
@@ -126,6 +134,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "confirm_clear_msg":    "Remove {count} completed task(s)?",
         "section_pending":      "To Do ({count})",
         "section_completed":    "Completed ({count})",
+        "more_hidden":          "+ {count} more",
         "badge_format":         "{done} of {total} done",
         "btn_close":            "✕",
         "btn_minimize":         "—",
@@ -169,6 +178,27 @@ def _relative_luminance(r: int, g: int, b: int) -> float:
     return 0.2126 * _ch(r) + 0.7152 * _ch(g) + 0.0722 * _ch(b)
 
 
+def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:
+    """Flatten an ``#RRGGBBAA`` colour onto an opaque background.
+
+    Tk widget colour options don't accept an alpha channel, so colours like
+    ``shadow_color`` (``#00000015``) can't be used directly as a ``bg``. This
+    alpha-composites *rgba_hex* over *background_hex* and returns a plain
+    ``#RRGGBB`` string Tk can use.
+    """
+    rgba = rgba_hex.lstrip("#")
+    if len(rgba) != 8:
+        return f"#{rgba[:6]}" if len(rgba) >= 6 else background_hex
+    r, g, b, a = (int(rgba[i:i + 2], 16) for i in (0, 2, 4, 6))
+    bg = background_hex.lstrip("#")
+    br, bgc, bb = (int(bg[i:i + 2], 16) for i in (0, 2, 4))
+    alpha = a / 255.0
+    out_r = round(r * alpha + br * (1 - alpha))
+    out_g = round(g * alpha + bgc * (1 - alpha))
+    out_b = round(b * alpha + bb * (1 - alpha))
+    return f"#{out_r:02x}{out_g:02x}{out_b:02x}"
+
+
 def _contrast_ratio(fg: str, bg: str) -> float:
     l1 = _relative_luminance(*_hex_to_rgb(fg))
     l2 = _relative_luminance(*_hex_to_rgb(bg))
@@ -181,6 +211,7 @@ _CONTRAST_PAIRS: list[Tuple[str, str, float]] = [
     ("text_completed",   "item_bg_completed", 4.5),
     ("text_on_header",   "header_bg",         4.5),
     ("text_secondary",   "content_bg",        4.5),
+    ("section_header",   "content_bg",        4.5),
     ("text_placeholder", "item_bg",           3.0),
     ("link_color",       "footer_bg",         4.5),
     ("empty_state_fg",   "content_bg",        3.0),
