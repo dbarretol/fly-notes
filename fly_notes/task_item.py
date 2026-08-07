@@ -10,9 +10,36 @@ Self-contained task-row widget with:
 from __future__ import annotations
 
 import tkinter as tk
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
-from .config import config
+from .config import blend_alpha_hex, config
+
+
+def draw_rounded_rect(
+    canvas: tk.Canvas,
+    x1: float, y1: float, x2: float, y2: float,
+    r: float, fill: str, outline: str, width: float,
+    tags: Tuple[str, ...] = (),
+) -> None:
+    """Draw a rounded rectangle on *canvas* using arcs + fill rects.
+
+    Shared by ``CustomCheckbox`` and ``TaskItem``'s card background so the
+    same corner-drawing logic isn't duplicated per widget.
+    """
+    d = r * 2
+    canvas.create_arc(x1, y1, x1 + d, y1 + d, start=90, extent=90,
+                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
+    canvas.create_arc(x2 - d, y1, x2, y1 + d, start=0, extent=90,
+                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
+    canvas.create_arc(x1, y2 - d, x1 + d, y2, start=180, extent=90,
+                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
+    canvas.create_arc(x2 - d, y2 - d, x2, y2, start=270, extent=90,
+                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
+    # Fill center regions
+    canvas.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill, tags=tags)
+    canvas.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill, tags=tags)
+    # Clean border on top
+    canvas.create_rectangle(x1, y1, x2, y2, fill="", outline=outline, width=width, tags=tags)
 
 
 class CustomCheckbox(tk.Canvas):
@@ -133,21 +160,7 @@ class CustomCheckbox(tk.Canvas):
         r: int, fill: str, outline: str, width: float,
     ) -> None:
         """Draw a rounded rectangle using arcs and rectangles."""
-        d = r * 2
-        # Four corner arcs
-        self.create_arc(x1, y1, x1 + d, y1 + d, start=90, extent=90,
-                        fill=fill, outline=outline, width=width, style="pieslice")
-        self.create_arc(x2 - d, y1, x2, y1 + d, start=0, extent=90,
-                        fill=fill, outline=outline, width=width, style="pieslice")
-        self.create_arc(x1, y2 - d, x1 + d, y2, start=180, extent=90,
-                        fill=fill, outline=outline, width=width, style="pieslice")
-        self.create_arc(x2 - d, y2 - d, x2, y2, start=270, extent=90,
-                        fill=fill, outline=outline, width=width, style="pieslice")
-        # Fill center regions
-        self.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill)
-        self.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill)
-        # Clean border on top
-        self.create_rectangle(x1, y1, x2, y2, fill="", outline=outline, width=width)
+        draw_rounded_rect(self, x1, y1, x2, y2, r, fill, outline, width)
 
     def set_canvas_bg(self, color: str) -> None:
         """Update background (used when row bg changes on hover/drag)."""
@@ -176,11 +189,9 @@ class TaskItem(tk.Frame):
     ) -> None:
         super().__init__(
             master,
-            bg=config.item_bg,
-            highlightbackground=config.border_color,
-            highlightthickness=1,
-            padx=config.item_padding_x,
-            pady=config.item_padding_y,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
             **kwargs,
         )
 
@@ -199,14 +210,37 @@ class TaskItem(tk.Frame):
         self.completed_var = tk.BooleanVar(value=completed)
         self._is_hovered = False
         self._is_dragging = False
+        self._drag_active = False
+        self._card_fill = config.item_bg_completed if completed else config.item_bg
+        self._radius = config.border_radius
+        self._shadow_px = 2
+
+        # ── Card background (rounded rect + subtle drop shadow) ──
+        # tk.Frame/tk.Label can't draw rounded corners natively, so the
+        # visible "card" is drawn on a Canvas behind a content Frame that
+        # is inset by _radius — the drawn corners are never covered by the
+        # (square-cornered) content frame sitting on top of them.
+        self.card_canvas = tk.Canvas(
+            self, bg=config.content_bg, highlightthickness=0, bd=0,
+        )
+        self.card_canvas.pack(fill="both", expand=True)
+        self.card_canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self._content = tk.Frame(
+            self.card_canvas, bg=self._card_fill,
+            padx=config.item_padding_x, pady=config.item_padding_y,
+        )
+        self._content_win = self.card_canvas.create_window(
+            self._radius, self._radius, window=self._content, anchor="nw",
+        )
 
         # ── Custom Checkbox ─────────────────
         self.check = CustomCheckbox(
-            self,
+            self._content,
             size=config.checkbox_size,
             checked=completed,
             command=self._handle_status_change,
-            bg=config.item_bg,
+            bg=self._card_fill,
             check_color=config.checkbox_check,
             border_color=config.checkbox_border,
             hover_color=config.checkbox_hover_bg,
@@ -215,10 +249,10 @@ class TaskItem(tk.Frame):
 
         # ── Label ───────────────────────────
         self.label = tk.Label(
-            self,
+            self._content,
             text=text,
             fg=config.text_primary,
-            bg=config.item_bg,
+            bg=self._card_fill,
             font=config.font_body,
             anchor="w",
         )
@@ -226,10 +260,10 @@ class TaskItem(tk.Frame):
 
         # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
-            self,
+            self._content,
             text=config.string("btn_close"),
             command=self._handle_delete,
-            bg=config.item_bg,
+            bg=self._card_fill,
             fg=config.text_secondary,
             bd=0,
             activebackground=config.btn_danger_bg,
@@ -247,19 +281,38 @@ class TaskItem(tk.Frame):
         self._bind_drag()
         self._bind_keyboard()
 
+        self._init_card_size()
         self._update_style()
+
+    def _init_card_size(self) -> None:
+        """Give the card canvas an initial size before its first <Configure>.
+
+        Height is fixed for the row's lifetime (content doesn't grow/shrink
+        vertically); width is a placeholder immediately superseded once the
+        parent's geometry manager allocates the row's real width and fires
+        <Configure> (handled by ``_on_canvas_configure``).
+        """
+        self._content.update_idletasks()
+        content_w = self._content.winfo_reqwidth()
+        content_h = self._content.winfo_reqheight()
+        span = 2 * self._radius + self._shadow_px
+        self.card_canvas.config(width=content_w + span, height=content_h + span)
+        self.card_canvas.itemconfigure(self._content_win, width=content_w)
 
     # ── Binding setup ────────────────────────
 
     def _bind_hover(self) -> None:
-        for w in (self, self.label, self.check):
+        # card_canvas covers essentially all of `self` visually (including
+        # the card's padding margin), so it needs the same bindings for
+        # hover to trigger anywhere within the row, not just over the label.
+        for w in (self, self.card_canvas, self.label, self.check):
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
         self.delete_btn.bind("<Enter>", self._on_delete_btn_enter)
         self.delete_btn.bind("<Leave>", self._on_delete_btn_leave)
 
     def _bind_drag(self) -> None:
-        for w in (self, self.label):
+        for w in (self, self.card_canvas, self.label):
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._do_drag)
             w.bind("<ButtonRelease-1>", self._stop_drag)
@@ -277,7 +330,7 @@ class TaskItem(tk.Frame):
         self._show_delete_btn()
         if not self.completed_var.get():
             self._set_row_bg(config.drag_highlight_color)
-        self.config(cursor="hand2")
+        self.card_canvas.config(cursor="hand2")
 
     def _on_leave(self, event: tk.Event = None) -> None:
         if self._is_dragging:
@@ -287,7 +340,7 @@ class TaskItem(tk.Frame):
         self._is_hovered = False
         self._hide_delete_btn()
         self._apply_base_bg()
-        self.config(cursor="")
+        self.card_canvas.config(cursor="")
 
     def _on_delete_btn_enter(self, event: tk.Event = None) -> None:
         self._is_hovered = True
@@ -373,15 +426,48 @@ class TaskItem(tk.Frame):
         self._set_row_bg(color)
 
     def set_drag_active(self, active: bool) -> None:
-        if active:
-            self.config(highlightbackground=config.drag_border, highlightthickness=2)
-        else:
-            self.config(highlightbackground=config.border_color, highlightthickness=1)
+        self._drag_active = active
+        self._redraw_card()
 
     def _set_row_bg(self, color: str) -> None:
         """Propagate background colour to all child widgets in the row."""
-        for w in (self, self.label):
-            w.config(bg=color)
+        self._card_fill = color
+        self._content.config(bg=color)
+        self.label.config(bg=color)
         self.check.set_canvas_bg(color)
         if self._delete_visible and self.delete_btn.cget("bg") != config.btn_danger_bg:
             self.delete_btn.config(bg=color)
+        self._redraw_card()
+
+    # ── Card canvas (rounded rect + shadow) ──
+
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        content_width = max(1, event.width - 2 * self._radius)
+        self.card_canvas.itemconfigure(self._content_win, width=content_width)
+        self._redraw_card(event.width, event.height)
+
+    def _redraw_card(self, width: Optional[int] = None, height: Optional[int] = None) -> None:
+        w = width if width is not None else self.card_canvas.winfo_width()
+        h = height if height is not None else self.card_canvas.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+        self.card_canvas.delete("card")
+        r = self._radius
+        off = self._shadow_px
+
+        # Shadow: a solid rounded rect offset down-right, drawn first so the
+        # main card (drawn on top, inset by `off`) leaves only a thin sliver
+        # visible along the bottom/right edges — a cheap drop-shadow with no
+        # real alpha compositing support in Tk.
+        shadow_fill = blend_alpha_hex(config.shadow_color, config.content_bg)
+        draw_rounded_rect(
+            self.card_canvas, off, off, w, h, r,
+            fill=shadow_fill, outline=shadow_fill, width=0, tags=("card",),
+        )
+
+        outline = config.drag_border if self._drag_active else config.border_color
+        outline_width = 2 if self._drag_active else 1
+        draw_rounded_rect(
+            self.card_canvas, 0, 0, w - off, h - off, r,
+            fill=self._card_fill, outline=outline, width=outline_width, tags=("card",),
+        )

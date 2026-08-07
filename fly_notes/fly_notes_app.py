@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import messagebox
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config import config
+from .config import blend_alpha_hex, config
 from .task_item import TaskItem
 from .task_manager import TaskManager
 from .window_controller import WindowController
@@ -21,26 +21,6 @@ from .window_controller import WindowController
 # ─────────────────────────────────────────────
 # Sub-components extracted from the monolithic class
 # ─────────────────────────────────────────────
-
-
-def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:
-    """Flatten an ``#RRGGBBAA`` colour onto an opaque background.
-
-    Tk widget ``bg`` options don't accept an alpha channel, so colours like
-    ``shadow_color`` (``#00000015``) can't be used directly. This alpha-composites
-    *rgba_hex* over *background_hex* and returns a plain ``#RRGGBB`` Tk can use.
-    """
-    rgba = rgba_hex.lstrip("#")
-    if len(rgba) != 8:
-        return f"#{rgba[:6]}" if len(rgba) >= 6 else background_hex
-    r, g, b, a = (int(rgba[i:i + 2], 16) for i in (0, 2, 4, 6))
-    bg = background_hex.lstrip("#")
-    br, bgc, bb = (int(bg[i:i + 2], 16) for i in (0, 2, 4))
-    alpha = a / 255.0
-    out_r = round(r * alpha + br * (1 - alpha))
-    out_g = round(g * alpha + bgc * (1 - alpha))
-    out_b = round(b * alpha + bb * (1 - alpha))
-    return f"#{out_r:02x}{out_g:02x}{out_b:02x}"
 
 
 def compute_reorder_target(
@@ -376,7 +356,7 @@ class TaskListView(tk.Frame):
     def add_widget(self, widget: TaskItem) -> None:
         self._task_widgets.append(widget)
         # Propagate scroll events
-        for child in (widget, widget.label, widget.check, widget.delete_btn):
+        for child in (widget, widget.card_canvas, widget.label, widget.check, widget.delete_btn):
             child.bind("<MouseWheel>", self._on_mousewheel)
             child.bind("<Button-4>", self._on_mousewheel)
             child.bind("<Button-5>", self._on_mousewheel)

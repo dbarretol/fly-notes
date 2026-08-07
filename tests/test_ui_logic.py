@@ -312,3 +312,97 @@ def test_scroll_increment_matches_task_row_height_to_prevent_split_rows(root):
         task_list.destroy()
     finally:
         win.destroy()
+
+
+# ── Rounded card + shadow (issues-v4 #3) ─────
+
+def test_task_item_card_canvas_gets_real_size_and_draws_rounded_shapes(root):
+    """Regression for 'border_radius/shadow_color declared but never
+    applied': the card canvas must end up with a real pixel size and both
+    the shadow + main rounded rect drawn (14 tagged shapes: 2 x [4 arcs +
+    2 fill rects + 1 border rect])."""
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x100+0+0")
+        item = TaskItem(win, task_id="1", text="Sample task")
+        item.pack(fill="x")
+        win.update_idletasks()
+
+        assert item.card_canvas.winfo_width() > 1
+        assert item.card_canvas.winfo_height() > 1
+        assert len(item.card_canvas.find_withtag("card")) == 14
+
+        item.destroy()
+    finally:
+        win.destroy()
+
+
+def test_task_item_hover_and_status_change_update_card_fill(root):
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x100+0+0")
+        item = TaskItem(win, task_id="1", text="Sample task")
+        item.pack(fill="x")
+        win.update_idletasks()
+
+        assert item._card_fill == config.item_bg
+
+        item._on_enter()
+        assert item._card_fill == config.drag_highlight_color
+
+        item._on_leave()
+        assert item._card_fill == config.item_bg
+
+        item.check.checked = True
+        item._handle_status_change()
+        assert item._card_fill == config.item_bg_completed
+
+        item.destroy()
+    finally:
+        win.destroy()
+
+
+def test_task_item_drag_active_toggles_outline_without_error(root):
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x100+0+0")
+        item = TaskItem(win, task_id="1", text="Sample task")
+        item.pack(fill="x")
+        win.update_idletasks()
+
+        item.set_drag_active(True)
+        assert item._drag_active is True
+        item.set_drag_active(False)
+        assert item._drag_active is False
+
+        item.destroy()
+    finally:
+        win.destroy()
+
+
+def test_task_item_card_resizes_with_row_width(root):
+    """The card canvas must track the row's actual allotted width (not
+    just its own natural label-text width) -- otherwise the rounded card
+    wouldn't stretch to fill the list the way the old square row did."""
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x100+0+0")
+        canvas = tk.Canvas(win, highlightthickness=0, bd=0)
+        canvas.pack(fill="both", expand=True)
+        inner = tk.Frame(canvas)
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw", width=320)
+
+        item = TaskItem(inner, task_id="1", text="Sample task")
+        item.pack(fill="x")
+        win.update()
+
+        narrow_width = item.card_canvas.winfo_width()
+
+        canvas.itemconfigure(win_id, width=500)
+        win.update()
+
+        assert item.card_canvas.winfo_width() > narrow_width
+
+        item.destroy()
+    finally:
+        win.destroy()

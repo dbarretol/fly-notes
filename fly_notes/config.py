@@ -170,6 +170,27 @@ def _relative_luminance(r: int, g: int, b: int) -> float:
     return 0.2126 * _ch(r) + 0.7152 * _ch(g) + 0.0722 * _ch(b)
 
 
+def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:
+    """Flatten an ``#RRGGBBAA`` colour onto an opaque background.
+
+    Tk widget colour options don't accept an alpha channel, so colours like
+    ``shadow_color`` (``#00000015``) can't be used directly as a ``bg``. This
+    alpha-composites *rgba_hex* over *background_hex* and returns a plain
+    ``#RRGGBB`` string Tk can use.
+    """
+    rgba = rgba_hex.lstrip("#")
+    if len(rgba) != 8:
+        return f"#{rgba[:6]}" if len(rgba) >= 6 else background_hex
+    r, g, b, a = (int(rgba[i:i + 2], 16) for i in (0, 2, 4, 6))
+    bg = background_hex.lstrip("#")
+    br, bgc, bb = (int(bg[i:i + 2], 16) for i in (0, 2, 4))
+    alpha = a / 255.0
+    out_r = round(r * alpha + br * (1 - alpha))
+    out_g = round(g * alpha + bgc * (1 - alpha))
+    out_b = round(b * alpha + bb * (1 - alpha))
+    return f"#{out_r:02x}{out_g:02x}{out_b:02x}"
+
+
 def _contrast_ratio(fg: str, bg: str) -> float:
     l1 = _relative_luminance(*_hex_to_rgb(fg))
     l2 = _relative_luminance(*_hex_to_rgb(bg))
