@@ -126,6 +126,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "confirm_clear_msg":    "Remove {count} completed task(s)?",
         "section_pending":      "To Do ({count})",
         "section_completed":    "Completed ({count})",
+        "more_hidden":          "+ {count} more",
         "badge_format":         "{done} of {total} done",
         "btn_close":            "✕",
         "btn_minimize":         "—",

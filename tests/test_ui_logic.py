@@ -140,3 +140,38 @@ def test_do_reorder_regression_respects_grouping(root, tmp_path):
     for w in widgets.values():
         w.destroy()
     task_list.destroy()
+
+
+# ── max_visible_tasks (Issue #2) ─────────────
+
+def test_repack_caps_rendered_rows_to_max_visible_tasks(root):
+    """With max_visible_tasks=3 and 5 tasks loaded, at most 3 task rows
+    are actually packed (rendered) — the rest stay unpacked, with a
+    '+N more' indicator instead."""
+    task_list = TaskListView(root)
+    widgets = []
+    for i in range(5):
+        w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+        task_list.add_widget(w)
+        widgets.append(w)
+
+    original_limit = config._data["settings"]["max_visible_tasks"]
+    config._data["settings"]["max_visible_tasks"] = 3
+    config._attr_cache.pop("max_visible_tasks", None)  # __getattr__ caches by name
+    try:
+        task_list.repack()
+        packed = [w for w in widgets if w.winfo_manager()]
+        assert len(packed) == 3
+        assert packed == widgets[:3]
+
+        indicator_texts = [
+            w.cget("text") for w in task_list._transient_widgets
+            if isinstance(w, tk.Label)
+        ]
+        assert config.string("more_hidden", count=2) in indicator_texts
+    finally:
+        config._data["settings"]["max_visible_tasks"] = original_limit
+        config._attr_cache.pop("max_visible_tasks", None)
+        for w in widgets:
+            w.destroy()
+        task_list.destroy()

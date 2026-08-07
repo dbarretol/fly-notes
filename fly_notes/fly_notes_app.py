@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import config
 from .task_item import TaskItem
@@ -376,10 +376,21 @@ class TaskListView(tk.Frame):
             self._update_scroll_region()
             return
 
+        visible, hidden_count = self._visible_widgets()
+
         if config.group_completed:
-            self._pack_grouped()
+            self._pack_grouped(visible)
         else:
-            self._pack_flat()
+            self._pack_flat(visible)
+
+        if hidden_count:
+            more_label = self._make_section_label(
+                config.string("more_hidden", count=hidden_count)
+            )
+            more_label.pack(
+                fill="x", padx=config.spacing_xl,
+                pady=(config.spacing_xs, config.spacing_xs),
+            )
 
         # Bottom spacer
         spacer = tk.Frame(self._inner, bg=config.content_bg, height=config.spacing_lg, bd=0)
@@ -395,7 +406,21 @@ class TaskListView(tk.Frame):
 
     # ── Private helpers ──────────────────────
 
-    def _pack_grouped(self) -> None:
+    def _visible_widgets(self) -> Tuple[List[TaskItem], int]:
+        """Cap the rendered widgets at ``config.max_visible_tasks``.
+
+        Applied to the *visual* (post-grouping) order, as one combined
+        cap across both groups. Returns the widgets to render and how
+        many were left out.
+        """
+        visual = self.visual_order()
+        limit = config.max_visible_tasks
+        if len(visual) <= limit:
+            return visual, 0
+        return visual[:limit], len(visual) - limit
+
+    def _pack_grouped(self, visible: List[TaskItem]) -> None:
+        visible_set = set(visible)
         pending = [w for w in self._task_widgets if not w.completed_var.get()]
         completed = [w for w in self._task_widgets if w.completed_var.get()]
 
@@ -408,7 +433,8 @@ class TaskListView(tk.Frame):
                 pady=(config.spacing_md, config.spacing_xs),
             )
         for w in pending:
-            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+            if w in visible_set:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
         if completed:
             if pending:
@@ -430,11 +456,14 @@ class TaskListView(tk.Frame):
                 pady=(config.spacing_xs, config.spacing_xs),
             )
             for w in completed:
-                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+                if w in visible_set:
+                    w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
-    def _pack_flat(self) -> None:
+    def _pack_flat(self, visible: List[TaskItem]) -> None:
+        visible_set = set(visible)
         for w in self._task_widgets:
-            w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+            if w in visible_set:
+                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
     def _make_section_label(self, text: str) -> tk.Label:
         lbl = tk.Label(
