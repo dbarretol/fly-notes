@@ -234,6 +234,7 @@ flowchart TD
 
     subgraph model["model/"]
         store["store.py<br/>TaskManager: tasks, undo, saving"]
+        task["task.py<br/>Task record"]
         reorder["reorder.py<br/>drag-and-drop decisions"]
     end
 
@@ -251,6 +252,7 @@ flowchart TD
     app --> widgets
     widgets --> item
     app --> store
+    store --> task
     app --> reorder
     app --> win
     app --> state
@@ -321,6 +323,7 @@ fly-notes/
 │   ├── config.py              # Defaults, validation, config.json merging
 │   ├── paths.py               # Where the data folder is
 │   ├── model/                 # No Tkinter
+│   │   ├── task.py            # Task record and its tasks.json format
 │   │   ├── store.py           # TaskManager: tasks, undo, debounced atomic saving
 │   │   └── reorder.py         # Drag-and-drop reorder decisions
 │   ├── ui/                    # Tkinter widgets
