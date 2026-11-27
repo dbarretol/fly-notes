@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The code is organized in three layers: `fly_notes/model/` (tasks and saving),
+  `fly_notes/ui/` (one module per widget) and `fly_notes/platform/` (Windows window
+  management, window state, single instance). Nothing changes for users. ([#21])
+
 ## [0.2.0] - 2026-11-26
 
 Usability release: undo, editing in place, full keyboard control, a remembered window and an
@@ -116,3 +122,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#14]: https://github.com/dbarretol/fly-notes/issues/14
 [#15]: https://github.com/dbarretol/fly-notes/issues/15
 [#16]: https://github.com/dbarretol/fly-notes/issues/16
+[#21]: https://github.com/dbarretol/fly-notes/issues/21

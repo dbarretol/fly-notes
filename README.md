@@ -219,33 +219,49 @@ flowchart TD
 
 ### Architecture
 
+The package has three layers. `ui/` builds the window, `model/` holds the tasks, and
+`platform/` handles the Windows-specific parts.
+
 ```mermaid
 flowchart TD
     main["__main__.py<br/>startup: DPI, logging, single-instance check"]
-    single["single_instance.py<br/>one copy per tasks file"]
-    app["fly_notes_app.py<br/>FlyNotesApp: header, entry, list, footer"]
-    item["task_item.py<br/>TaskItem: one task row"]
-    win["window_controller.py<br/>drag, resize, taskbar proxy"]
-    state["window_state.py<br/>state.json, monitor checks"]
-    manager["task_manager.py<br/>tasks, undo, saving"]
+
+    subgraph ui["ui/"]
+        app["app.py<br/>FlyNotesApp"]
+        widgets["header · entry · task_list · footer"]
+        item["task_item.py · checkbox.py<br/>one task row"]
+    end
+
+    subgraph model["model/"]
+        store["store.py<br/>TaskManager: tasks, undo, saving"]
+        reorder["reorder.py<br/>drag-and-drop decisions"]
+    end
+
+    subgraph platform["platform/"]
+        win["window_controller.py<br/>drag, resize, taskbar proxy"]
+        state["window_state.py<br/>state.json, monitor checks"]
+        single["single_instance.py<br/>one copy per tasks file"]
+    end
+
     config["config.py<br/>defaults + config.json"]
     paths["paths.py<br/>data folder"]
 
     main --> single
     main --> app
-    app --> item
+    app --> widgets
+    widgets --> item
+    app --> store
+    app --> reorder
     app --> win
     app --> state
-    app --> manager
-    app --> config
-    item --> config
+    ui --> config
     win --> config
     config --> paths
 ```
 
 - `FlyNotesApp` owns the UI and connects it to `TaskManager`, which holds the task list.
-- `task_manager.py`, `window_state.py`, `single_instance.py` and `paths.py` don't use
-  Tkinter, so they can be tested without a window.
+- `model/`, `window_state.py`, `single_instance.py` and `paths.py` don't use Tkinter, so
+  they can be tested without a window.
 
 ### Saving and recovery
 
@@ -302,14 +318,24 @@ fly-notes/
 ├── main.py                    # Thin launcher (also the PyInstaller entry script)
 ├── fly_notes/
 │   ├── __main__.py            # Startup: DPI awareness, logging, single-instance check, Tk root
-│   ├── fly_notes_app.py       # Main window: header, entry, task list, footer
-│   ├── task_item.py           # One task row + custom checkbox
-│   ├── task_manager.py        # Tasks, undo, debounced atomic saving (no Tkinter)
-│   ├── window_controller.py   # Borderless drag/resize + taskbar proxy
-│   ├── window_state.py        # state.json: geometry, always on top, monitor checks
-│   ├── single_instance.py     # One running copy per tasks file (Windows named mutex)
 │   ├── config.py              # Defaults, validation, config.json merging
-│   └── paths.py               # Where the data folder is
+│   ├── paths.py               # Where the data folder is
+│   ├── model/                 # No Tkinter
+│   │   ├── store.py           # TaskManager: tasks, undo, debounced atomic saving
+│   │   └── reorder.py         # Drag-and-drop reorder decisions
+│   ├── ui/                    # Tkinter widgets
+│   │   ├── app.py             # FlyNotesApp: builds the window and wires everything up
+│   │   ├── header.py          # Title bar: pin, minimize, close
+│   │   ├── entry.py           # New-task input
+│   │   ├── task_list.py       # Scrollable, grouped list of rows
+│   │   ├── task_item.py       # One task row
+│   │   ├── checkbox.py        # Canvas-drawn checkbox
+│   │   ├── footer.py          # Status, "Clear completed", undo notice
+│   │   └── drawing.py         # Rounded rectangles, colour blending
+│   └── platform/              # Windows-specific
+│       ├── window_controller.py  # Borderless drag/resize + taskbar proxy
+│       ├── window_state.py    # state.json: geometry, always on top, monitor checks
+│       └── single_instance.py # One running copy per tasks file (Windows named mutex)
 ├── tests/                     # pytest suite
 ├── assets/                    # Window icon
 ├── docs/images/               # README screenshot
