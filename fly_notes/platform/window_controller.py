@@ -5,7 +5,7 @@ Handles all platform-specific quirks for a frameless, always-on-top
 Tk window that still appears in the OS taskbar.
 
 Platform support: **Windows-only by design.** The taskbar-proxy trick in
-``_setup_taskbar_proxy``/``minimize_window`` exists specifically to work
+``_create_taskbar_proxy``/``minimize_window`` exists specifically to work
 around ``overrideredirect(True)`` removing the window from the Windows
 taskbar. On macOS/Linux window managers, ``overrideredirect`` behaves
 differently (often no taskbar entry at all, or different reparenting/
@@ -128,7 +128,7 @@ class WindowController:
 
     def __init__(
         self,
-        root: tk.Tk,
+        root: tk.Tk | tk.Toplevel,
         cfg: AppConfig,
         on_resize_callback: Callable[[int], None] | None = None,
         on_close: Callable[[], None] | None = None,
@@ -163,8 +163,7 @@ class WindowController:
         # Taskbar proxy
         self._was_minimized: bool = False
         self._proxy_programmatic: bool = False
-        self._proxy: tk.Toplevel | None = None
-        self._setup_taskbar_proxy()
+        self._proxy = self._create_taskbar_proxy()
         self._apply_icon()
 
     @staticmethod
@@ -272,20 +271,21 @@ class WindowController:
 
     # ── Taskbar proxy ────────────────────────
 
-    def _setup_taskbar_proxy(self) -> None:
+    def _create_taskbar_proxy(self) -> tk.Toplevel:
         """Create a hidden proxy window that represents the app in the taskbar.
 
         This is only meaningful on platforms where ``overrideredirect(True)``
         removes the window from the taskbar (primarily Windows).
         """
-        self._proxy = tk.Toplevel(self.root)
-        self._proxy.title(self._cfg.string("app_title"))
-        self._proxy.geometry("1x1+-32000+-32000")
-        self._proxy.resizable(False, False)
-        self._proxy.protocol("WM_DELETE_WINDOW", self._on_proxy_close)
-        self._proxy.bind("<Map>", self._proxy_restore)
-        self._proxy.bind("<FocusIn>", self._proxy_restore)
-        self._proxy.withdraw()
+        proxy = tk.Toplevel(self.root)
+        proxy.title(self._cfg.string("app_title"))
+        proxy.geometry("1x1+-32000+-32000")
+        proxy.resizable(False, False)
+        proxy.protocol("WM_DELETE_WINDOW", self._on_proxy_close)
+        proxy.bind("<Map>", self._proxy_restore)
+        proxy.bind("<FocusIn>", self._proxy_restore)
+        proxy.withdraw()
+        return proxy
 
     def _on_proxy_close(self) -> None:
         """Handle close from the taskbar proxy (e.g. right-click → Close window)."""
@@ -346,7 +346,6 @@ class WindowController:
             return
         try:
             self.root.iconbitmap(default=str(ICON_PATH))
-            if self._proxy is not None:
-                self._proxy.iconbitmap(default=str(ICON_PATH))
+            self._proxy.iconbitmap(default=str(ICON_PATH))
         except tk.TclError:
             logger.warning("Could not apply window icon from %s", ICON_PATH)

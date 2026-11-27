@@ -175,8 +175,8 @@ def monitor_work_areas() -> list[Rect]:
     if sys.platform != "win32":
         return []
     try:
-        import ctypes
-        from ctypes import wintypes
+        import ctypes  # noqa: PLC0415 -- Windows-only, inside the guard
+        from ctypes import wintypes  # noqa: PLC0415 -- Windows-only, inside the guard
 
         class MONITORINFO(ctypes.Structure):
             _fields_ = [
