@@ -111,7 +111,7 @@ By default, task data is stored in `tasks.json` at the project root
 
 ## Development
 
-Install dev dependencies (pytest, pytest-cov, pyinstaller):
+Install dev dependencies (pytest, pytest-cov, ruff, pyinstaller):
 
 ```powershell
 uv sync --extra dev
@@ -128,6 +128,20 @@ With coverage:
 ```powershell
 uv run pytest tests/ --cov=fly_notes --cov-report=term-missing
 ```
+
+Lint and format (configured in `pyproject.toml`):
+
+```powershell
+uv run ruff check .
+uv run ruff format .
+```
+
+### Branches and CI
+
+Work happens on short-lived branches (`feat/*`, `fix/*`, `chore/*`, `docs/*`) opened as pull
+requests against `dev`; `main` only receives stable releases from `dev`. GitHub Actions
+(`.github/workflows/ci.yml`) runs ruff and the test suite on Windows for every pull request
+and push to `dev` and `main`.
 
 ## Build the .exe (PyInstaller)
 
