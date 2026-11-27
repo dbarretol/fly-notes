@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Long task text wraps onto several lines and re-wraps when the window is resized, instead of
+  being cut off at the window edge. ([#8])
+
 ## [0.1.1] - 2026-11-26
 
 Data-safety and packaging release. Upgrading from 0.1.0 is strongly recommended if you use
@@ -53,3 +58,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#5]: https://github.com/dbarretol/fly-notes/issues/5
 [#6]: https://github.com/dbarretol/fly-notes/issues/6
 [#7]: https://github.com/dbarretol/fly-notes/issues/7
+[#8]: https://github.com/dbarretol/fly-notes/issues/8
