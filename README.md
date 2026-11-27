@@ -164,13 +164,13 @@ Fly Notes works out of the box. To customize it, create a `config.json` in the
 [data folder](#where-your-data-lives) containing **only the keys you want to change**.
 Everything else keeps its default.
 
-Example: a green header and a larger default window.
+Example: a blue accent (focus ring and links) and a larger default window.
 
 ```json
 {
   "colors": {
-    "header_bg": "#2D6A4F",
-    "border_focus": "#2D6A4F"
+    "border_focus": "#1F5FAD",
+    "link_color": "#1F5FAD"
   },
   "settings": {
     "default_width": 360,
@@ -208,12 +208,16 @@ Colors you set in `colors` still win over the preset, so you can change a few of
 ```json
 {
   "settings": { "theme": "dark" },
-  "colors": { "header_bg": "#2D6A4F", "border_focus": "#52B788" }
+  "colors": { "border_focus": "#7FB3E8", "link_color": "#7FB3E8" }
 }
 ```
 
 Both presets pass the same contrast checks. The theme is read at startup, so restart Fly Notes
 after changing it.
+
+If you give the header its own color with `header_bg`, set `text_on_header` (the title) and
+`header_icon` (the pin, minimize and close buttons) to match: by default they are dark, for the
+light header.
 
 ### Card borders
 
