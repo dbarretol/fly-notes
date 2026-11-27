@@ -83,6 +83,14 @@ dependencies, and ships as a single `.exe`.
 > The executable is not code-signed, so Windows SmartScreen may show a warning the first time.
 > Choose **More info → Run anyway**, or run from source (option B) or
 > [build the `.exe` yourself](#building-the-exe).
+>
+> To check that the file is the one published, compare its hash with the SHA-256 in the release
+> notes (or in `FlyNotes.exe.sha256`). PowerShell prints it in capitals; the letters are the
+> same:
+>
+> ```powershell
+> (Get-FileHash .\FlyNotes.exe -Algorithm SHA256).Hash
+> ```
 
 ### Option B: run from source
 
@@ -349,7 +357,7 @@ fly-notes/
 ├── assets/                    # Window icon
 ├── docs/images/               # README screenshot
 ├── AGENTS.md                  # Notes for coding agents and contributors
-├── .github/                   # CI and release workflows, pull request template
+├── .github/                   # CI and release workflows, Dependabot, PR template
 ├── scripts/release_notes.py   # Release notes from CHANGELOG.md (used by the release workflow)
 ├── FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
@@ -371,6 +379,8 @@ flowchart LR
   the test suite on Windows for every pull request and push to `dev` and `main`.
 - On every push to `main`, once those checks pass, CI also builds `FlyNotes.exe` and uploads it
   with its SHA-256 as a workflow artifact, kept for 30 days.
+- Dependabot ([`dependabot.yml`](.github/dependabot.yml)) opens weekly pull requests against
+  `dev` to update the GitHub Actions and the development tools in `uv.lock`.
 - User-visible changes go in the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md).
 
 ### Building the .exe

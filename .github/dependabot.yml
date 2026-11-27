@@ -1,0 +1,25 @@
+# Weekly update pull requests against dev, like any other change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  # Dev tools only (ruff, pyright, pytest, PyInstaller): the app has no runtime dependencies.
+  - package-ecosystem: uv
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      dev-tools:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore

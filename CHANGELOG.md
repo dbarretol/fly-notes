@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tag matches `pyproject.toml` and has a `CHANGELOG.md` section, runs the tests, builds
   `FlyNotes.exe` and attaches it with a `FlyNotes.exe.sha256` file, using that section as the
   notes. ([#30])
+- Dependabot opens weekly pull requests against `dev` that update the GitHub Actions and the
+  development tools in `uv.lock`. ([#32])
+- The README shows how to check a downloaded `FlyNotes.exe` against its published SHA-256. The
+  `.exe` stays unsigned. ([#32])
 
 ## [0.3.0] - 2026-11-27
 
@@ -199,3 +203,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#27]: https://github.com/dbarretol/fly-notes/issues/27
 [#29]: https://github.com/dbarretol/fly-notes/issues/29
 [#30]: https://github.com/dbarretol/fly-notes/issues/30
+[#32]: https://github.com/dbarretol/fly-notes/issues/32
