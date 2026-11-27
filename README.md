@@ -185,8 +185,11 @@ The full list of keys and their defaults is `DEFAULT_CONFIG` in
 A mistake can't break the app:
 
 - Unknown keys are ignored, and a warning is logged.
-- An invalid value, such as a malformed color, makes Fly Notes ignore the whole file and use
-  the defaults.
+- An invalid value makes Fly Notes ignore the whole file and use the defaults. That includes a
+  malformed color, a size or limit of `0`, `true` where a number is expected, a font size that
+  is not a whole number, `min_width` above `default_width` (or the same for heights), and an
+  unfocused opacity above the focused one.
+- A shortcut Tk doesn't understand falls back to its default; the other settings still apply.
 - A color pair with poor contrast (below the WCAG ratio) only logs a warning.
 
 ## Where your data lives
@@ -219,38 +222,57 @@ flowchart TD
 
 ### Architecture
 
+The package has three layers. `ui/` builds the window, `model/` holds the tasks, and
+`platform/` handles the Windows-specific parts.
+
 ```mermaid
 flowchart TD
     main["__main__.py<br/>startup: DPI, logging, single-instance check"]
-    single["single_instance.py<br/>one copy per tasks file"]
-    app["fly_notes_app.py<br/>FlyNotesApp: header, entry, list, footer"]
-    item["task_item.py<br/>TaskItem: one task row"]
-    win["window_controller.py<br/>drag, resize, taskbar proxy"]
-    state["window_state.py<br/>state.json, monitor checks"]
-    manager["task_manager.py<br/>tasks, undo, saving"]
+
+    subgraph ui["ui/"]
+        app["app.py<br/>FlyNotesApp"]
+        widgets["header · entry · task_list · footer"]
+        item["task_item.py · checkbox.py<br/>one task row"]
+    end
+
+    subgraph model["model/"]
+        store["store.py<br/>TaskManager: tasks, undo, saving"]
+        task["task.py<br/>Task record"]
+        reorder["reorder.py<br/>drag-and-drop decisions"]
+    end
+
+    subgraph platform["platform/"]
+        win["window_controller.py<br/>drag, resize, taskbar proxy"]
+        state["window_state.py<br/>state.json, monitor checks"]
+        single["single_instance.py<br/>one copy per tasks file"]
+    end
+
     config["config.py<br/>defaults + config.json"]
     paths["paths.py<br/>data folder"]
 
     main --> single
     main --> app
-    app --> item
+    app --> widgets
+    widgets --> item
+    app --> store
+    store --> task
+    app --> reorder
     app --> win
     app --> state
-    app --> manager
-    app --> config
-    item --> config
+    ui --> config
     win --> config
     config --> paths
 ```
 
 - `FlyNotesApp` owns the UI and connects it to `TaskManager`, which holds the task list.
-- `task_manager.py`, `window_state.py`, `single_instance.py` and `paths.py` don't use
-  Tkinter, so they can be tested without a window.
+- `model/`, `window_state.py`, `single_instance.py` and `paths.py` don't use Tkinter, so
+  they can be tested without a window.
 
 ### Saving and recovery
 
 Every change schedules a save half a second later, so a burst of edits becomes one write.
-Closing the app saves immediately.
+Closing the app saves immediately. The save is scheduled with Tk's `after()`, so it runs on
+the UI thread: there are no background threads or locks.
 
 ```mermaid
 flowchart LR
@@ -288,11 +310,13 @@ holds the taskbar button:
 ## Development
 
 ```powershell
-uv sync --extra dev                  # pytest, pytest-cov, ruff, pyinstaller
+uv sync --extra dev                  # pytest, pytest-cov, ruff, pyright, pyinstaller
 uv run pytest                        # test suite
+uv run pytest -m "not gui"           # only the tests that need no display
 uv run pytest --cov=fly_notes --cov-report=term-missing
 uv run ruff check .                  # lint
 uv run ruff format .                 # format
+uv run pyright                       # type check
 ```
 
 Project layout:
@@ -302,17 +326,29 @@ fly-notes/
 ├── main.py                    # Thin launcher (also the PyInstaller entry script)
 ├── fly_notes/
 │   ├── __main__.py            # Startup: DPI awareness, logging, single-instance check, Tk root
-│   ├── fly_notes_app.py       # Main window: header, entry, task list, footer
-│   ├── task_item.py           # One task row + custom checkbox
-│   ├── task_manager.py        # Tasks, undo, debounced atomic saving (no Tkinter)
-│   ├── window_controller.py   # Borderless drag/resize + taskbar proxy
-│   ├── window_state.py        # state.json: geometry, always on top, monitor checks
-│   ├── single_instance.py     # One running copy per tasks file (Windows named mutex)
-│   ├── config.py              # Defaults, validation, config.json merging
-│   └── paths.py               # Where the data folder is
-├── tests/                     # pytest suite
+│   ├── config.py              # Defaults, validation, config.json merging → typed AppConfig
+│   ├── paths.py               # Where the data folder is
+│   ├── model/                 # No Tkinter
+│   │   ├── task.py            # Task record and its tasks.json format
+│   │   ├── store.py           # TaskManager: tasks, undo, debounced atomic saving
+│   │   └── reorder.py         # Drag-and-drop reorder decisions
+│   ├── ui/                    # Tkinter widgets
+│   │   ├── app.py             # FlyNotesApp: builds the window and wires everything up
+│   │   ├── header.py          # Title bar: pin, minimize, close
+│   │   ├── entry.py           # New-task input
+│   │   ├── task_list.py       # Scrollable, grouped list of rows
+│   │   ├── task_item.py       # One task row
+│   │   ├── checkbox.py        # Canvas-drawn checkbox
+│   │   ├── footer.py          # Status, "Clear completed", undo notice
+│   │   └── drawing.py         # Rounded rectangles, colour blending
+│   └── platform/              # Windows-specific
+│       ├── window_controller.py  # Borderless drag/resize + taskbar proxy
+│       ├── window_state.py    # state.json: geometry, always on top, monitor checks
+│       └── single_instance.py # One running copy per tasks file (Windows named mutex)
+├── tests/                     # pytest suite, one file per module; shared fixtures in conftest.py
 ├── assets/                    # Window icon
-├── docs/                      # Contributor notes (AGENTS.md) and README images
+├── docs/images/               # README screenshot
+├── AGENTS.md                  # Notes for coding agents and contributors
 ├── .github/                   # CI workflow and pull request template
 ├── FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
@@ -324,14 +360,14 @@ fly-notes/
 
 ```mermaid
 flowchart LR
-    feat["feat/* · fix/* · docs/* · chore/*"] -- "pull request<br/>(CI must pass)" --> dev
+    feat["feat/* · fix/* · refactor/* · perf/* · docs/* · chore/*"] -- "pull request<br/>(CI must pass)" --> dev
     dev -- "release pull request<br/>+ tag vX.Y.Z" --> main
 ```
 
 - Work happens on short-lived branches, opened as pull requests against `dev`.
 - `main` only receives releases from `dev`.
-- GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs ruff on Ubuntu and the test
-  suite on Windows for every pull request and push to `dev` and `main`.
+- GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs ruff and pyright on Ubuntu and
+  the test suite on Windows for every pull request and push to `dev` and `main`.
 - User-visible changes go in the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md).
 
 ### Building the .exe

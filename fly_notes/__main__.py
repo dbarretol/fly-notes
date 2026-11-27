@@ -11,12 +11,17 @@ import logging
 import sys
 import tkinter as tk
 
+from fly_notes import __version__
+from fly_notes.config import load_config
+from fly_notes.platform.single_instance import SingleInstance, instance_key
+from fly_notes.ui.app import FlyNotesApp
+
 
 def _configure_platform() -> None:
     """Platform-specific setup. MUST run before any Tk window is created."""
     if sys.platform == "win32":
         try:
-            import ctypes
+            import ctypes  # noqa: PLC0415 -- Windows-only, inside the guard
 
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (ImportError, AttributeError, OSError):
@@ -38,14 +43,10 @@ def main() -> None:
     _configure_platform()
     log = logging.getLogger(__name__)
 
-    # Imported only now so that DPI awareness (above) is set before the
-    # config module and the UI load, and logging is already configured.
-    from fly_notes import __version__
-    from fly_notes.config import config
-    from fly_notes.single_instance import SingleInstance, instance_key
+    cfg = load_config()
 
     # One instance per tasks file: a second launch brings the first to the front.
-    guard = SingleInstance(instance_key(config.tasks_file))
+    guard = SingleInstance(instance_key(cfg.settings.tasks_file))
     if not guard.acquire():
         if guard.notify_existing():
             log.info("Fly Notes is already running; brought it to the front")
@@ -57,10 +58,8 @@ def main() -> None:
     root = tk.Tk()
     root.withdraw()
 
-    from fly_notes.fly_notes_app import FlyNotesApp
-
     log.info("Fly Notes %s starting", __version__)
-    app = FlyNotesApp(root)
+    app = FlyNotesApp(root, cfg)
     app.listen_for_activation(guard.show_requested)
     # Safety net: persist any change still waiting on the save debounce if the
     # process exits by a path that bypasses the app's close handler.

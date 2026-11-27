@@ -1,6 +1,9 @@
 """
-Centralised, validated configuration with deep-merge support and
-WCAG-compliant colour tokens organised in a semantic design system.
+Validated, typed configuration: built-in defaults merged with ``config.json``.
+
+``load_config()`` returns an immutable ``AppConfig`` with one dataclass per
+section (``cfg.colors.header_bg``, ``cfg.spacing.md``, ...). Nothing is read
+at import time: ``main()`` builds the config and passes it to the UI.
 """
 
 from __future__ import annotations
@@ -8,9 +11,12 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import os
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
-from .paths import APP_PATHS
+from .paths import APP_PATHS, AppPaths
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +89,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "header_height": 38,
         "footer_height": 32,
         "border_radius": 6,
-        "animation_ms": 150,
         "confirm_delete": False,
         "undo_timeout_ms": 5000,
         # Starting value only: the header pin (or Ctrl+T) choice is remembered in state.json.
@@ -179,27 +184,6 @@ def _relative_luminance(r: int, g: int, b: int) -> float:
     return 0.2126 * _ch(r) + 0.7152 * _ch(g) + 0.0722 * _ch(b)
 
 
-def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:
-    """Flatten an ``#RRGGBBAA`` colour onto an opaque background.
-
-    Tk widget colour options don't accept an alpha channel, so colours like
-    ``shadow_color`` (``#00000015``) can't be used directly as a ``bg``. This
-    alpha-composites *rgba_hex* over *background_hex* and returns a plain
-    ``#RRGGBB`` string Tk can use.
-    """
-    rgba = rgba_hex.lstrip("#")
-    if len(rgba) != 8:
-        return f"#{rgba[:6]}" if len(rgba) >= 6 else background_hex
-    r, g, b, a = (int(rgba[i : i + 2], 16) for i in (0, 2, 4, 6))
-    bg = background_hex.lstrip("#")
-    br, bgc, bb = (int(bg[i : i + 2], 16) for i in (0, 2, 4))
-    alpha = a / 255.0
-    out_r = round(r * alpha + br * (1 - alpha))
-    out_g = round(g * alpha + bgc * (1 - alpha))
-    out_b = round(b * alpha + bb * (1 - alpha))
-    return f"#{out_r:02x}{out_g:02x}{out_b:02x}"
-
-
 def _contrast_ratio(fg: str, bg: str) -> float:
     l1 = _relative_luminance(*_hex_to_rgb(fg))
     l2 = _relative_luminance(*_hex_to_rgb(bg))
@@ -263,235 +247,376 @@ def _validate_contrast(colors: dict[str, str]) -> None:
             pass
 
 
-def _validate_transparency(trans: dict[str, float]) -> None:
+def _is_int(value: Any) -> bool:
+    """A real int: ``bool`` is an ``int`` subclass, but ``true`` is not a size."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_transparency(trans: dict[str, Any]) -> None:
     for key in ("active", "inactive"):
-        val = trans.get(key)
-        if not isinstance(val, (int, float)) or not (0.0 <= val <= 1.0):
-            raise ValueError(f"transparency.{key}: must be float 0.0-1.0, got {val!r}")
+        if key not in trans:
+            continue
+        val = trans[key]
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or not 0.0 < val <= 1.0:
+            raise ValueError(
+                f"transparency.{key}: must be a number above 0 and up to 1, got {val!r}"
+            )
+    if "active" in trans and "inactive" in trans and trans["inactive"] > trans["active"]:
+        raise ValueError(
+            f"transparency.inactive ({trans['inactive']}) must not be above "
+            f"transparency.active ({trans['active']})"
+        )
+
+
+# Settings that must be at least 1: a zero size, limit or delay would break the window.
+_POSITIVE_INT_SETTINGS = (
+    "default_width",
+    "default_height",
+    "min_width",
+    "min_height",
+    "drag_threshold",
+    "max_task_length",
+    "header_height",
+    "footer_height",
+    "max_visible_tasks",
+    "checkbox_size",
+    "scrollbar_width",
+    "undo_timeout_ms",
+)
+# Settings where 0 is meaningful (no padding, square corners, no separator, fade at once).
+_NON_NEGATIVE_INT_SETTINGS = (
+    "item_padding_y",
+    "item_padding_x",
+    "border_radius",
+    "separator_height",
+    "inactive_fade_delay_ms",
+)
+_BOOL_SETTINGS = ("confirm_delete", "group_completed", "always_on_top")
 
 
 def _validate_settings(settings: dict[str, Any]) -> None:
-    int_keys = (
-        "default_width",
-        "default_height",
-        "drag_threshold",
-        "min_width",
-        "min_height",
-        "max_task_length",
-        "item_padding_y",
-        "item_padding_x",
-        "header_height",
-        "footer_height",
-        "border_radius",
-        "animation_ms",
-        "max_visible_tasks",
-        "checkbox_size",
-        "separator_height",
-        "scrollbar_width",
-        "undo_timeout_ms",
-        "inactive_fade_delay_ms",
-    )
-    for key in int_keys:
-        val = settings.get(key)
-        if val is not None and (not isinstance(val, int) or val < 0):
-            raise ValueError(f"settings.{key}: must be a positive int, got {val!r}")
+    for key in _POSITIVE_INT_SETTINGS:
+        if key in settings and not (_is_int(settings[key]) and settings[key] >= 1):
+            raise ValueError(
+                f"settings.{key}: must be a whole number of 1 or more, got {settings[key]!r}"
+            )
+    for key in _NON_NEGATIVE_INT_SETTINGS:
+        if key in settings and not (_is_int(settings[key]) and settings[key] >= 0):
+            raise ValueError(
+                f"settings.{key}: must be a whole number of 0 or more, got {settings[key]!r}"
+            )
+    for key in _BOOL_SETTINGS:
+        if key in settings and not isinstance(settings[key], bool):
+            raise ValueError(f"settings.{key}: must be true or false, got {settings[key]!r}")
 
-    bool_keys = ("confirm_delete", "group_completed", "always_on_top")
-    for key in bool_keys:
-        val = settings.get(key)
-        if val is not None and not isinstance(val, bool):
-            raise ValueError(f"settings.{key}: must be a bool, got {val!r}")
+    if "tasks_file" in settings:
+        tf = settings["tasks_file"]
+        if not isinstance(tf, str) or not tf.strip():
+            raise ValueError(f"settings.tasks_file: must be a non-empty string path, got {tf!r}")
 
-    tf = settings.get("tasks_file")
-    if tf is not None and (not isinstance(tf, str) or not tf.strip()):
-        raise ValueError(f"settings.tasks_file: must be a non-empty string path, got {tf!r}")
+    for minimum, default in (("min_width", "default_width"), ("min_height", "default_height")):
+        if minimum in settings and default in settings and settings[minimum] > settings[default]:
+            raise ValueError(
+                f"settings.{minimum} ({settings[minimum]}) must not be above "
+                f"settings.{default} ({settings[default]})"
+            )
 
 
-def _validate_fonts(fonts: dict[str, list]) -> None:
+def _validate_spacing(spacing: dict[str, Any]) -> None:
+    for key, val in spacing.items():
+        if not (_is_int(val) and val >= 0):
+            raise ValueError(f"spacing.{key}: must be a whole number of 0 or more, got {val!r}")
+
+
+def _validate_fonts(fonts: dict[str, Any]) -> None:
     for key, val in fonts.items():
         if not isinstance(val, list) or len(val) < 2:
             raise ValueError(f"fonts.{key}: expected [family, size, ...], got {val!r}")
+        family, size, *styles = val
+        if not isinstance(family, str) or not family.strip():
+            raise ValueError(f"fonts.{key}: the family must be a non-empty string, got {family!r}")
+        # Tk reads a positive size as points and a negative one as pixels; 0 is meaningless.
+        if not _is_int(size) or size == 0:
+            raise ValueError(f"fonts.{key}: the size must be a non-zero whole number, got {size!r}")
+        if not all(isinstance(style, str) for style in styles):
+            raise ValueError(f'fonts.{key}: styles must be strings like "bold", got {styles!r}')
+
+
+def _validate_shortcuts(shortcuts: dict[str, Any]) -> None:
+    """Shape only. Whether Tk accepts the sequence is checked when it is bound."""
+    for key, val in shortcuts.items():
+        if not isinstance(val, str) or not val.strip():
+            raise ValueError(
+                f'shortcuts.{key}: must be a Tk key sequence like "<Control-n>", got {val!r}'
+            )
+
+
+def _validate_strings(strings: dict[str, Any]) -> None:
+    for key, val in strings.items():
+        if not isinstance(val, str):
+            raise ValueError(f"strings.{key}: must be text, got {val!r}")
 
 
 # ──────────────────────────────────────────────
-# Config class — uses __getattr__ to eliminate DRY violation
+# Typed configuration
 # ──────────────────────────────────────────────
 
-# Map from property name → (section, key, cast)
-# This is built automatically; only special-name mappings are listed here.
-_PROPERTY_ALIASES: dict[str, tuple[str, str]] = {
-    # Aliases where property name ≠ key name
-    "drag_highlight_color": ("colors", "drag_highlight"),
-    "active_alpha": ("transparency", "active"),
-    "inactive_alpha": ("transparency", "inactive"),
-}
-
-# Section-level prefixes for auto-resolution
-_SECTION_PREFIXES: dict[str, tuple[str, ...]] = {
-    "colors": (),
-    "transparency": (),
-    "settings": (),
-    "shortcuts": (),
-}
-
-_SPACING_PREFIX = "spacing_"
-_FONT_PREFIX = "font_"
-_SHORTCUT_PREFIX = "shortcut_"
+Font = tuple[str, int, *tuple[str, ...]]
 
 
-class Config:
-    """Immutable-after-load application configuration.
+@dataclass(frozen=True, slots=True)
+class Colors:
+    """Colour tokens (``#RRGGBB``, or ``#RRGGBBAA`` for ``shadow_color``)."""
 
-    Properties are resolved dynamically via ``__getattr__`` to eliminate
-    the ~80-property boilerplate.  Attribute names follow these conventions:
+    header_bg: str
+    content_bg: str
+    item_bg: str
+    item_bg_completed: str
+    footer_bg: str
+    separator_color: str
+    text_primary: str
+    text_secondary: str
+    text_completed: str
+    text_on_header: str
+    text_placeholder: str
+    section_header: str
+    border_color: str
+    border_focus: str
+    btn_danger_bg: str
+    btn_danger_hover: str
+    btn_close_hover_bg: str
+    btn_header_hover_bg: str
+    link_color: str
+    link_hover: str
+    drag_highlight: str
+    drag_border: str
+    checkbox_check: str
+    checkbox_bg: str
+    checkbox_border: str
+    checkbox_hover_bg: str
+    scrollbar_thumb: str
+    scrollbar_track: str
+    shadow_color: str
+    empty_state_fg: str
 
-    - ``config.<color_key>``        → ``_data["colors"][key]`` (str)
-    - ``config.spacing_<key>``      → ``_data["spacing"][key]`` (int)
-    - ``config.font_<key>``         → ``_data["fonts"][key]``   (tuple)
-    - ``config.shortcut_<key>``     → ``_data["shortcuts"][key]``(str)
-    - ``config.<settings_key>``     → ``_data["settings"][key]``
-    - ``config.active_alpha``       → ``_data["transparency"]["active"]``
-    - ``config.inactive_alpha``     → ``_data["transparency"]["inactive"]``
-    - ``config.drag_highlight_color`` → alias for ``drag_highlight``
+
+@dataclass(frozen=True, slots=True)
+class Transparency:
+    """Window opacity, 0.0 to 1.0, while focused and unfocused."""
+
+    active: float
+    inactive: float
+
+
+@dataclass(frozen=True, slots=True)
+class Spacing:
+    """Spacing scale in pixels."""
+
+    xs: int
+    sm: int
+    md: int
+    lg: int
+    xl: int
+    xxl: int
+
+
+@dataclass(frozen=True, slots=True)
+class Settings:
+    """Sizes, limits and behaviour switches."""
+
+    tasks_file: str
+    default_width: int
+    default_height: int
+    drag_threshold: int
+    min_width: int
+    min_height: int
+    max_task_length: int
+    item_padding_y: int
+    item_padding_x: int
+    header_height: int
+    footer_height: int
+    border_radius: int
+    confirm_delete: bool
+    undo_timeout_ms: int
+    always_on_top: bool
+    inactive_fade_delay_ms: int
+    max_visible_tasks: int
+    checkbox_size: int
+    group_completed: bool
+    separator_height: int
+    scrollbar_width: int
+
+
+@dataclass(frozen=True, slots=True)
+class Fonts:
+    """Tk font tuples: ``(family, size, *styles)``."""
+
+    header: Font
+    body: Font
+    body_strike: Font
+    footer: Font
+    empty_hint: Font
+    badge: Font
+    section: Font
+
+
+@dataclass(frozen=True, slots=True)
+class Shortcuts:
+    """Tk event sequences for the keyboard shortcuts."""
+
+    new_task: str
+    delete_completed: str
+    close: str
+    undo: str
+    edit_task: str
+    toggle_always_on_top: str
+
+
+@dataclass(frozen=True, slots=True)
+class Strings:
+    """UI text; some are ``str.format`` templates (see ``AppConfig.string``)."""
+
+    app_title: str
+    entry_placeholder: str
+    clear_completed: str
+    clear_completed_zero: str
+    empty_state: str
+    confirm_delete_title: str
+    confirm_delete_msg: str
+    undo_deleted: str
+    undo_cleared: str
+    undo_action: str
+    section_pending: str
+    section_completed: str
+    more_hidden: str
+    more_hidden_paged: str
+    badge_format: str
+    btn_close: str
+    btn_minimize: str
+    btn_pin_on: str
+    btn_pin_off: str
+
+
+@dataclass(frozen=True, slots=True)
+class AppConfig:
+    """The whole configuration, one typed section per ``config.json`` section.
+
+    Built once in ``main()`` with ``load_config()`` and passed to the widgets
+    that need it; tests use ``default_config()``. Immutable: derive a variant
+    with ``dataclasses.replace``.
     """
 
-    def __init__(self) -> None:
-        self._data: dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
-        self._load()
-        self._resolve_tasks_file()
-        # Pre-build a lookup cache for __getattr__
-        self._attr_cache: dict[str, Any] = {}
+    colors: Colors
+    transparency: Transparency
+    spacing: Spacing
+    settings: Settings
+    fonts: Fonts
+    shortcuts: Shortcuts
+    strings: Strings
 
-    # ── Loading ──────────────────────────────
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AppConfig:
+        """Build from a complete, already validated config dict."""
+        return cls(
+            colors=Colors(**{k: str(v) for k, v in data["colors"].items()}),
+            transparency=Transparency(**{k: float(v) for k, v in data["transparency"].items()}),
+            spacing=Spacing(**data["spacing"]),
+            settings=Settings(**data["settings"]),
+            fonts=Fonts(**{k: tuple(v) for k, v in data["fonts"].items()}),
+            shortcuts=Shortcuts(**data["shortcuts"]),
+            strings=Strings(**data["strings"]),
+        )
 
-    def _load(self) -> None:
-        if not CONFIG_FILE.exists():
-            logger.info("No user config at %s — using defaults", CONFIG_FILE)
-            self._post_validate()
-            return
+    def string(self, key: str, **kwargs: Any) -> str:
+        """The UI text *key*, formatted with *kwargs*.
+
+        A template the user broke in ``config.json`` (an unknown placeholder)
+        is shown as written rather than raising.
+        """
+        template = getattr(self.strings, key, key)
         try:
-            with open(CONFIG_FILE, encoding="utf-8") as fh:
+            return template.format(**kwargs) if kwargs else template
+        except (KeyError, IndexError, ValueError):
+            return template
+
+    def with_settings(self, **changes: Any) -> AppConfig:
+        """A copy with some ``settings`` replaced (handy in tests)."""
+        return replace(self, settings=replace(self.settings, **changes))
+
+
+# ──────────────────────────────────────────────
+# Loading
+# ──────────────────────────────────────────────
+
+
+def default_config(tasks_file: str | os.PathLike[str] | None = None) -> AppConfig:
+    """The built-in defaults, without reading ``config.json``.
+
+    *tasks_file* overrides ``settings.tasks_file`` (tests point it at a
+    temporary folder); otherwise it is the default path for the data folder.
+    """
+    data = copy.deepcopy(DEFAULT_CONFIG)
+    if tasks_file is not None:
+        data["settings"]["tasks_file"] = str(tasks_file)
+    return AppConfig.from_dict(data)
+
+
+def load_config(
+    config_file: Path = CONFIG_FILE,
+    paths: AppPaths = APP_PATHS,
+) -> AppConfig:
+    """Read *config_file* over the defaults and validate the result.
+
+    Unknown keys are ignored with a warning. If the file can't be parsed or
+    a value is invalid, the defaults are used. A relative ``tasks_file`` is
+    taken from the data folder.
+    """
+    data = copy.deepcopy(DEFAULT_CONFIG)
+    if not config_file.exists():
+        logger.info("No user config at %s — using defaults", config_file)
+    else:
+        try:
+            with open(config_file, encoding="utf-8") as fh:
                 user_cfg = json.load(fh)
             if not isinstance(user_cfg, dict):
                 raise TypeError(f"Config root must be a dict, got {type(user_cfg).__name__}")
-            self._deep_merge(self._data, user_cfg)
-            self._validate_structure()
-            self._post_validate()
-            logger.info("User config loaded from %s", CONFIG_FILE)
+            _deep_merge(data, user_cfg)
+            _validate_structure(data)
+            logger.info("User config loaded from %s", config_file)
         except Exception as exc:
             logger.warning("Bad config — falling back to defaults: %s", exc)
-            self._data = copy.deepcopy(DEFAULT_CONFIG)
+            data = copy.deepcopy(DEFAULT_CONFIG)
+    _validate_contrast(data["colors"])
 
-    def _resolve_tasks_file(self) -> None:
-        """Make ``settings.tasks_file`` absolute; relative paths are taken from the data dir."""
-        settings = self._data["settings"]
-        settings["tasks_file"] = str(APP_PATHS.resolve_data_path(settings["tasks_file"]))
-        logger.info("Data mode: %s — tasks file: %s", APP_PATHS.mode, settings["tasks_file"])
-
-    def _validate_structure(self) -> None:
-        _validate_colors(self._data["colors"])
-        _validate_transparency(self._data["transparency"])
-        _validate_settings(self._data["settings"])
-        _validate_fonts(self._data["fonts"])
-
-    def _post_validate(self) -> None:
-        _validate_contrast(self._data["colors"])
-
-    @staticmethod
-    def _deep_merge(base: dict, override: dict) -> dict:
-        """Recursively merge *override* into *base*, ignoring unknown keys."""
-        for key, value in override.items():
-            if key not in base:
-                logger.warning("Ignoring unknown config key: %r", key)
-                continue
-            if isinstance(value, dict) and isinstance(base.get(key), dict):
-                # Filter unknown sub-keys
-                known = _KNOWN_KEYS.get(key)
-                if known is not None:
-                    unknown = set(value.keys()) - known
-                    for uk in unknown:
-                        logger.warning("Ignoring unknown config key: %s.%s", key, uk)
-                    value = {k: v for k, v in value.items() if k in known}
-                Config._deep_merge(base[key], value)
-            else:
-                base[key] = value
-        return base
-
-    # ── Dynamic attribute access ─────────────
-
-    def __getattr__(self, name: str) -> Any:
-        # Fast path: cached
-        cache = self.__dict__.get("_attr_cache")
-        if cache is not None and name in cache:
-            return cache[name]
-
-        value = self._resolve_attr(name)
-        if value is _SENTINEL:
-            raise AttributeError(f"Config has no attribute {name!r}")
-
-        # Cache for future access
-        if cache is not None:
-            cache[name] = value
-        return value
-
-    def _resolve_attr(self, name: str) -> Any:
-        # 1. Explicit aliases
-        if name in _PROPERTY_ALIASES:
-            section, key = _PROPERTY_ALIASES[name]
-            return self._cast(section, self._data[section][key])
-
-        # 2. spacing_<key>
-        if name.startswith(_SPACING_PREFIX):
-            key = name[len(_SPACING_PREFIX) :]
-            if key in self._data["spacing"]:
-                return int(self._data["spacing"][key])
-
-        # 3. font_<key>
-        if name.startswith(_FONT_PREFIX):
-            key = name[len(_FONT_PREFIX) :]
-            if key in self._data["fonts"]:
-                return tuple(self._data["fonts"][key])
-
-        # 4. shortcut_<key>
-        if name.startswith(_SHORTCUT_PREFIX):
-            key = name[len(_SHORTCUT_PREFIX) :]
-            if key in self._data["shortcuts"]:
-                return str(self._data["shortcuts"][key])
-
-        # 5. colors (direct key match)
-        if name in self._data["colors"]:
-            return str(self._data["colors"][name])
-
-        # 6. settings (direct key match)
-        if name in self._data["settings"]:
-            return self._data["settings"][name]
-
-        return _SENTINEL
-
-    @staticmethod
-    def _cast(section: str, value: Any) -> Any:
-        if section == "colors":
-            return str(value)
-        if section == "transparency":
-            return float(value)
-        if section == "spacing":
-            return int(value)
-        if section == "fonts":
-            return tuple(value)
-        if section == "shortcuts":
-            return str(value)
-        return value
-
-    # ── Strings (i18n) ───────────────────────
-
-    def string(self, key: str, **kwargs: Any) -> str:
-        template = self._data["strings"].get(key, key)
-        try:
-            return template.format(**kwargs) if kwargs else template
-        except (KeyError, IndexError):
-            return template
+    settings = data["settings"]
+    settings["tasks_file"] = str(paths.resolve_data_path(settings["tasks_file"]))
+    logger.info("Data mode: %s — tasks file: %s", paths.mode, settings["tasks_file"])
+    return AppConfig.from_dict(data)
 
 
-_SENTINEL = object()
+def _validate_structure(data: dict[str, Any]) -> None:
+    _validate_colors(data["colors"])
+    _validate_transparency(data["transparency"])
+    _validate_settings(data["settings"])
+    _validate_spacing(data["spacing"])
+    _validate_fonts(data["fonts"])
+    _validate_shortcuts(data["shortcuts"])
+    _validate_strings(data["strings"])
 
-config = Config()
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge *override* into *base*, ignoring unknown keys."""
+    for key, value in override.items():
+        if key not in base:
+            logger.warning("Ignoring unknown config key: %r", key)
+            continue
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            known = _KNOWN_KEYS.get(key)
+            if known is not None:
+                for unknown in set(value.keys()) - known:
+                    logger.warning("Ignoring unknown config key: %s.%s", key, unknown)
+                value = {k: v for k, v in value.items() if k in known}
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base

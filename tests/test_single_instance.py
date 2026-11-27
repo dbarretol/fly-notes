@@ -3,8 +3,9 @@ import uuid
 
 import pytest
 
-from fly_notes import single_instance
-from fly_notes.single_instance import SingleInstance, instance_key
+from fly_notes import __main__
+from fly_notes.config import default_config
+from fly_notes.platform.single_instance import SingleInstance, instance_key
 
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="named mutex is Windows-only")
 
@@ -85,9 +86,7 @@ def test_guard_is_a_no_op_without_the_windows_api(key):
     guard.release()
 
 
-def test_main_exits_without_a_window_when_already_running(monkeypatch):
-    from fly_notes import __main__
-
+def test_main_exits_without_a_window_when_already_running(monkeypatch, tmp_path):
     calls = []
 
     class Taken:
@@ -104,7 +103,8 @@ def test_main_exits_without_a_window_when_already_running(monkeypatch):
     def no_window(*args, **kwargs):
         raise AssertionError("a second instance must not create a window")
 
-    monkeypatch.setattr(single_instance, "SingleInstance", Taken)
+    monkeypatch.setattr(__main__, "SingleInstance", Taken)
+    monkeypatch.setattr(__main__, "load_config", lambda: default_config(tmp_path / "t.json"))
     monkeypatch.setattr(__main__, "_configure_logging", lambda: None)
     monkeypatch.setattr(__main__, "_configure_platform", lambda: None)
     monkeypatch.setattr(__main__.tk, "Tk", no_window)

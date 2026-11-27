@@ -47,7 +47,7 @@ class SingleInstance:
         k32 = self._kernel32
         if k32 is None:
             return True
-        import ctypes
+        import ctypes  # noqa: PLC0415 -- Windows-only, kernel32 loaded above
 
         mutex = k32.CreateMutexW(None, False, f"Local\\{self.key}-lock")
         if not mutex:
@@ -101,8 +101,8 @@ class SingleInstance:
 
 def _load_kernel32():
     try:
-        import ctypes
-        from ctypes import wintypes
+        import ctypes  # noqa: PLC0415 -- Windows-only, inside the guard
+        from ctypes import wintypes  # noqa: PLC0415 -- Windows-only, inside the guard
 
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
         k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
@@ -128,8 +128,8 @@ def _load_kernel32():
 
 def _load_user32():
     try:
-        import ctypes
-        from ctypes import wintypes
+        import ctypes  # noqa: PLC0415 -- Windows-only, inside the guard
+        from ctypes import wintypes  # noqa: PLC0415 -- Windows-only, inside the guard
 
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]

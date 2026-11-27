@@ -1,5 +1,4 @@
-"""
-Self-contained task-row widget with:
+"""Self-contained task-row widget with:
 * Custom-drawn Canvas checkbox (consistent cross-platform)
 * Hover-reveal delete button
 * Distinct completed vs pending visual states
@@ -14,237 +13,19 @@ from __future__ import annotations
 import tkinter as tk
 from collections.abc import Callable
 
-from .config import blend_alpha_hex, config
+from ..config import AppConfig
+from .checkbox import CustomCheckbox
+from .drawing import RoundedRect, blend_alpha_hex, draw_rounded_rect, recolor_rounded_rect
 
 # Never wrap narrower than this, so a tiny window doesn't stack one word per line.
 _MIN_WRAP_WIDTH = 60
 
 
-def draw_rounded_rect(
-    canvas: tk.Canvas,
-    x1: float,
-    y1: float,
-    x2: float,
-    y2: float,
-    r: float,
-    fill: str,
-    outline: str,
-    width: float,
-    tags: tuple[str, ...] = (),
-) -> None:
-    """Draw a rounded rectangle on *canvas* using arcs + fill rects.
-
-    Shared by ``CustomCheckbox`` and ``TaskItem``'s card background so the
-    same corner-drawing logic isn't duplicated per widget.
-    """
-    d = r * 2
-    canvas.create_arc(
-        x1,
-        y1,
-        x1 + d,
-        y1 + d,
-        start=90,
-        extent=90,
-        fill=fill,
-        outline=outline,
-        width=width,
-        style="pieslice",
-        tags=tags,
-    )
-    canvas.create_arc(
-        x2 - d,
-        y1,
-        x2,
-        y1 + d,
-        start=0,
-        extent=90,
-        fill=fill,
-        outline=outline,
-        width=width,
-        style="pieslice",
-        tags=tags,
-    )
-    canvas.create_arc(
-        x1,
-        y2 - d,
-        x1 + d,
-        y2,
-        start=180,
-        extent=90,
-        fill=fill,
-        outline=outline,
-        width=width,
-        style="pieslice",
-        tags=tags,
-    )
-    canvas.create_arc(
-        x2 - d,
-        y2 - d,
-        x2,
-        y2,
-        start=270,
-        extent=90,
-        fill=fill,
-        outline=outline,
-        width=width,
-        style="pieslice",
-        tags=tags,
-    )
-    # Fill center regions
-    canvas.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill, tags=tags)
-    canvas.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill, tags=tags)
-    # Clean border on top
-    canvas.create_rectangle(x1, y1, x2, y2, fill="", outline=outline, width=width, tags=tags)
-
-
-class CustomCheckbox(tk.Canvas):
-    """
-    Canvas-drawn checkbox — consistent across all platforms.
-
-    Draws a rounded-rect box with checkmark. Supports hover feedback
-    and checked/unchecked states with distinct visual treatment.
-    """
-
-    def __init__(
-        self,
-        master: tk.Widget,
-        size: int = 18,
-        checked: bool = False,
-        command: Callable[[], None] | None = None,
-        bg: str = "#FFFFFF",
-        check_color: str = "#B35C00",
-        border_color: str = "#B0977A",
-        hover_color: str = "#FFF0E0",
-        **kwargs,
-    ) -> None:
-        super().__init__(
-            master,
-            width=size,
-            height=size,
-            bg=bg,
-            highlightthickness=0,
-            bd=0,
-            cursor="hand2",
-            **kwargs,
-        )
-        self._size = size
-        self._checked = checked
-        self._command = command
-        self._bg = bg
-        self._check_color = check_color
-        self._border_color = border_color
-        self._hover_color = hover_color
-        self._is_hovered = False
-
-        # Pre-compute geometry constants
-        self._pad = 2
-        self._radius = 3
-        self._check_width = 2.5
-
-        self.bind("<Button-1>", self._on_click)
-        self.bind("<Enter>", self._on_enter)
-        self.bind("<Leave>", self._on_leave)
-
-        self._draw()
-
-    @property
-    def checked(self) -> bool:
-        return self._checked
-
-    @checked.setter
-    def checked(self, value: bool) -> None:
-        if self._checked != value:
-            self._checked = value
-            self._draw()
-
-    def _on_click(self, event: tk.Event | None = None) -> None:
-        self._checked = not self._checked
-        self._draw()
-        if self._command:
-            self._command()
-
-    def _on_enter(self, event: tk.Event | None = None) -> None:
-        if not self._is_hovered:
-            self._is_hovered = True
-            self._draw()
-
-    def _on_leave(self, event: tk.Event | None = None) -> None:
-        if self._is_hovered:
-            self._is_hovered = False
-            self._draw()
-
-    def _draw(self) -> None:
-        self.delete("all")
-        s = self._size
-        pad = self._pad
-        r = self._radius
-
-        # Determine visual state
-        if self._checked:
-            fill = self._check_color
-            outline = self._check_color
-            border_w = 2
-        elif self._is_hovered:
-            fill = self._hover_color
-            outline = self._check_color
-            border_w = 2
-        else:
-            fill = self._bg
-            outline = self._border_color
-            border_w = 1.5
-
-        # Rounded rectangle via arcs + fill rects
-        self._draw_rounded_rect(pad, pad, s - pad, s - pad, r, fill, outline, border_w)
-
-        # Checkmark
-        if self._checked:
-            cx, cy = s / 2, s / 2
-            cw = self._check_width
-            self.create_line(
-                cx - 4,
-                cy,
-                cx - 1,
-                cy + 3,
-                fill="white",
-                width=cw,
-                capstyle="round",
-            )
-            self.create_line(
-                cx - 1,
-                cy + 3,
-                cx + 5,
-                cy - 4,
-                fill="white",
-                width=cw,
-                capstyle="round",
-            )
-
-    def _draw_rounded_rect(
-        self,
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
-        r: int,
-        fill: str,
-        outline: str,
-        width: float,
-    ) -> None:
-        """Draw a rounded rectangle using arcs and rectangles."""
-        draw_rounded_rect(self, x1, y1, x2, y2, r, fill, outline, width)
-
-    def set_canvas_bg(self, color: str) -> None:
-        """Update background (used when row bg changes on hover/drag)."""
-        self.config(bg=color)
-
-
-class _BoolValue:
+class BoolValue:
     """``get()``/``set()`` holder with the same interface as ``tk.BooleanVar``.
 
-    No widget is bound to the completed flag, so a Tcl variable isn't needed;
-    a ``BooleanVar`` also breaks when it is garbage-collected off the main
-    thread (e.g. during the save timer), which logs "main thread is not in
-    main loop" from its ``__del__``.
+    No widget is bound to the completed flag, so a Tcl variable isn't needed,
+    and a plain attribute avoids tying each row's state to the Tcl interpreter.
     """
 
     __slots__ = ("_value",)
@@ -262,13 +43,14 @@ class _BoolValue:
 class TaskItem(tk.Frame):
     """One task row: custom checkbox │ label │ delete button.
 
-    Exposes ``task_id``, ``completed_var``, and public references to
-    ``label``, ``check``, and ``delete_btn`` for external event binding.
+    Exposes ``task_id`` and ``completed_var``. Its child widgets stay private;
+    the list routes scrolling through them with ``bind_scroll``.
     """
 
     def __init__(
         self,
-        master: tk.Widget,
+        master: tk.Misc,
+        cfg: AppConfig,
         task_id: str,
         text: str,
         completed: bool = False,
@@ -282,9 +64,10 @@ class TaskItem(tk.Frame):
         on_move: Callable[[TaskItem, int], None] | None = None,
         **kwargs,
     ) -> None:
+        self._cfg = cfg
         super().__init__(
             master,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             **kwargs,
@@ -305,14 +88,23 @@ class TaskItem(tk.Frame):
         self._on_move = on_move
 
         # State
-        self.completed_var = _BoolValue(completed)
+        self.completed_var = BoolValue(completed)
         self._is_hovered = False
         self._is_dragging = False
         self._drag_active = False
         self._has_focus = False
-        self._card_fill = config.item_bg_completed if completed else config.item_bg
-        self._radius = config.border_radius
+        self._card_fill = (
+            self._cfg.colors.item_bg_completed if completed else self._cfg.colors.item_bg
+        )
+        self._radius = self._cfg.settings.border_radius
         self._shadow_px = 2
+        # shadow_color has an alpha channel Tk can't draw: flatten it once.
+        self._shadow_fill = blend_alpha_hex(
+            self._cfg.colors.shadow_color, self._cfg.colors.content_bg
+        )
+        # The main card's canvas items and the size they were drawn at.
+        self._card: RoundedRect | None = None
+        self._card_size = (0, 0)
 
         # ── Card background (rounded rect + subtle drop shadow) ──
         # tk.Frame/tk.Label can't draw rounded corners natively, so the
@@ -320,23 +112,23 @@ class TaskItem(tk.Frame):
         # is inset by _radius — the drawn corners are never covered by the
         # (square-cornered) content frame sitting on top of them.
         # The card canvas is also the row's keyboard focus target (Tab/arrows).
-        self.card_canvas = tk.Canvas(
+        self._card_canvas = tk.Canvas(
             self,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             takefocus=1,
         )
-        self.card_canvas.pack(fill="both", expand=True)
-        self.card_canvas.bind("<Configure>", self._on_canvas_configure)
+        self._card_canvas.pack(fill="both", expand=True)
+        self._card_canvas.bind("<Configure>", self._on_canvas_configure)
 
         self._content = tk.Frame(
-            self.card_canvas,
+            self._card_canvas,
             bg=self._card_fill,
-            padx=config.item_padding_x,
-            pady=config.item_padding_y,
+            padx=self._cfg.settings.item_padding_x,
+            pady=self._cfg.settings.item_padding_y,
         )
-        self._content_win = self.card_canvas.create_window(
+        self._content_win = self._card_canvas.create_window(
             self._radius,
             self._radius,
             window=self._content,
@@ -344,46 +136,47 @@ class TaskItem(tk.Frame):
         )
 
         # ── Custom Checkbox ─────────────────
-        self.check = CustomCheckbox(
+        self._check = CustomCheckbox(
             self._content,
-            size=config.checkbox_size,
+            size=self._cfg.settings.checkbox_size,
             checked=completed,
             command=self._handle_status_change,
             bg=self._card_fill,
-            check_color=config.checkbox_check,
-            border_color=config.checkbox_border,
-            hover_color=config.checkbox_hover_bg,
+            check_color=self._cfg.colors.checkbox_check,
+            border_color=self._cfg.colors.checkbox_border,
+            hover_color=self._cfg.colors.checkbox_hover_bg,
+            box_color=self._cfg.colors.checkbox_bg,
         )
-        self.check.pack(side="left", padx=(0, config.spacing_md))
+        self._check.pack(side="left", padx=(0, self._cfg.spacing.md))
 
         # ── Label ───────────────────────────
-        self.label = tk.Label(
+        self._label = tk.Label(
             self._content,
             text=text,
-            fg=config.text_primary,
+            fg=self._cfg.colors.text_primary,
             bg=self._card_fill,
-            font=config.font_body,
+            font=self._cfg.fonts.body,
             anchor="w",
             justify="left",
         )
-        self.label.pack(side="left", fill="x", expand=True)
+        self._label.pack(side="left", fill="x", expand=True)
         # Set from the row's real width in ``_on_canvas_configure``; 0 = no wrap.
         self._wrap_width = 0
         # Inline editor, only while editing (see begin_edit).
         self._editor: tk.Entry | None = None
 
         # ── Delete button (hidden by default) ──
-        self.delete_btn = tk.Button(
+        self._delete_btn = tk.Button(
             self._content,
-            text=config.string("btn_close"),
+            text=self._cfg.string("btn_close"),
             command=self._handle_delete,
             bg=self._card_fill,
-            fg=config.text_secondary,
+            fg=self._cfg.colors.text_secondary,
             bd=0,
-            activebackground=config.btn_danger_bg,
+            activebackground=self._cfg.colors.btn_danger_hover,
             activeforeground="#FFFFFF",
             cursor="hand2",
-            font=config.font_footer,
+            font=self._cfg.fonts.footer,
             width=2,
             relief="flat",
             takefocus=True,
@@ -409,8 +202,8 @@ class TaskItem(tk.Frame):
         content_w = self._content.winfo_reqwidth()
         content_h = self._content.winfo_reqheight()
         span = 2 * self._radius + self._shadow_px
-        self.card_canvas.config(width=content_w + span, height=content_h + span)
-        self.card_canvas.itemconfigure(self._content_win, width=content_w)
+        self._card_canvas.config(width=content_w + span, height=content_h + span)
+        self._card_canvas.itemconfigure(self._content_win, width=content_w)
 
     # ── Binding setup ────────────────────────
 
@@ -418,24 +211,24 @@ class TaskItem(tk.Frame):
         # card_canvas covers essentially all of `self` visually (including
         # the card's padding margin), so it needs the same bindings for
         # hover to trigger anywhere within the row, not just over the label.
-        for w in (self, self.card_canvas, self.label, self.check):
+        for w in (self, self._card_canvas, self._label, self._check):
             w.bind("<Enter>", self._on_enter)
             w.bind("<Leave>", self._on_leave)
-        self.delete_btn.bind("<Enter>", self._on_delete_btn_enter)
-        self.delete_btn.bind("<Leave>", self._on_delete_btn_leave)
+        self._delete_btn.bind("<Enter>", self._on_delete_btn_enter)
+        self._delete_btn.bind("<Leave>", self._on_delete_btn_leave)
 
     def _bind_drag(self) -> None:
-        for w in (self, self.card_canvas, self.label):
+        for w in (self, self._card_canvas, self._label):
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._do_drag)
             w.bind("<ButtonRelease-1>", self._stop_drag)
 
     def _bind_keyboard(self) -> None:
-        self.delete_btn.bind("<Return>", lambda e: self._handle_delete())
-        self.delete_btn.bind("<space>", lambda e: self._handle_delete())
-        self.label.bind("<Double-Button-1>", lambda e: self.begin_edit())
+        self._delete_btn.bind("<Return>", lambda e: self._handle_delete())
+        self._delete_btn.bind("<space>", lambda e: self._handle_delete())
+        self._label.bind("<Double-Button-1>", lambda e: self.begin_edit())
 
-        c = self.card_canvas
+        c = self._card_canvas
         c.bind("<FocusIn>", self._on_focus_in)
         c.bind("<FocusOut>", self._on_focus_out)
         c.bind("<Up>", lambda e: self._navigate(-1))
@@ -455,11 +248,11 @@ class TaskItem(tk.Frame):
 
     def focus_row(self) -> None:
         """Give this row keyboard focus (shows the focus ring)."""
-        self.card_canvas.focus_set()
+        self._card_canvas.focus_set()
 
     def toggle(self) -> None:
         """Flip completed, exactly like clicking the checkbox."""
-        self.check.checked = not self.check.checked
+        self._check.checked = not self._check.checked
         self._handle_status_change()
 
     def _on_focus_in(self, event: tk.Event | None = None) -> None:
@@ -506,13 +299,13 @@ class TaskItem(tk.Frame):
         editor = tk.Entry(
             self._content,
             bg="#FFFFFF",
-            fg=config.text_primary,
-            insertbackground=config.text_primary,
-            font=config.font_body,
+            fg=self._cfg.colors.text_primary,
+            insertbackground=self._cfg.colors.text_primary,
+            font=self._cfg.fonts.body,
             bd=0,
             highlightthickness=1,
-            highlightbackground=config.border_color,
-            highlightcolor=config.border_focus,
+            highlightbackground=self._cfg.colors.border_color,
+            highlightcolor=self._cfg.colors.border_focus,
         )
         editor.insert(0, self.task_text)
         editor.select_range(0, tk.END)
@@ -521,8 +314,8 @@ class TaskItem(tk.Frame):
         editor.bind("<KP_Enter>", self._commit_edit_event)
         editor.bind("<Escape>", self._cancel_edit_event)
         editor.bind("<FocusOut>", lambda e: self.commit_edit())
-        self.label.pack_forget()
-        editor.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        self._label.pack_forget()
+        self._pack_main(editor)
         self._editor = editor
         editor.focus_set()
 
@@ -534,7 +327,7 @@ class TaskItem(tk.Frame):
         saved = self._on_text_change(self, new_text) if self._on_text_change else None
         if saved is not None:
             self.task_text = saved
-            self.label.config(text=saved)
+            self._label.config(text=saved)
         self._close_editor()
 
     def cancel_edit(self) -> None:
@@ -556,14 +349,17 @@ class TaskItem(tk.Frame):
         had_focus = editor is not None and editor.focus_get() is editor
         if editor is not None:
             editor.destroy()
-        self.label.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        self._pack_main(self._label)
         if had_focus:
             self.winfo_toplevel().focus_set()
         self._refit()
 
-    def _pack_anchor(self) -> tk.Widget | None:
-        """The widget the label/editor must be packed before (keeps the delete button last)."""
-        return self.delete_btn if self._delete_visible else None
+    def _pack_main(self, widget: tk.Widget) -> None:
+        """Pack the label or editor, before the delete button when it shows (it stays last)."""
+        if self._delete_visible:
+            widget.pack(side="left", fill="x", expand=True, before=self._delete_btn)
+        else:
+            widget.pack(side="left", fill="x", expand=True)
 
     # ── Hover ────────────────────────────────
 
@@ -573,8 +369,8 @@ class TaskItem(tk.Frame):
         self._is_hovered = True
         self._show_delete_btn()
         if not self.completed_var.get():
-            self._set_row_bg(config.drag_highlight_color)
-        self.card_canvas.config(cursor="hand2")
+            self._set_row_bg(self._cfg.colors.drag_highlight)
+        self._card_canvas.config(cursor="hand2")
 
     def _on_leave(self, event: tk.Event | None = None) -> None:
         if self._is_dragging:
@@ -584,15 +380,15 @@ class TaskItem(tk.Frame):
         self._is_hovered = False
         self._hide_delete_btn()
         self._apply_base_bg()
-        self.card_canvas.config(cursor="")
+        self._card_canvas.config(cursor="")
 
     def _on_delete_btn_enter(self, event: tk.Event | None = None) -> None:
         self._is_hovered = True
-        self.delete_btn.config(bg=config.btn_danger_bg, fg="#FFFFFF")
+        self._delete_btn.config(bg=self._cfg.colors.btn_danger_bg, fg="#FFFFFF")
 
     def _on_delete_btn_leave(self, event: tk.Event | None = None) -> None:
         bg = self._current_base_bg()
-        self.delete_btn.config(bg=bg, fg=config.text_secondary)
+        self._delete_btn.config(bg=bg, fg=self._cfg.colors.text_secondary)
         if not self._pointer_still_inside():
             self._is_hovered = False
             self._hide_delete_btn()
@@ -605,6 +401,23 @@ class TaskItem(tk.Frame):
             return self.contains(self.winfo_containing(x, y))
         except tk.TclError:
             return False
+
+    def bind_scroll(self, handler: Callable[[tk.Event], object]) -> None:
+        """Send mouse-wheel events over any part of the row to *handler*.
+
+        A child widget swallows wheel events, so each one is bound: the card,
+        its content frame, the label, the checkbox and the delete button.
+        """
+        for widget in (
+            self,
+            self._card_canvas,
+            self._content,
+            self._label,
+            self._check,
+            self._delete_btn,
+        ):
+            for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(sequence, handler)
 
     def contains(self, widget: tk.Misc | None) -> bool:
         """True if *widget* is this row or one of its descendants.
@@ -623,18 +436,18 @@ class TaskItem(tk.Frame):
 
     def _show_delete_btn(self) -> None:
         if not self._delete_visible:
-            self.delete_btn.pack(side="right", padx=(config.spacing_sm, 0))
+            self._delete_btn.pack(side="right", padx=(self._cfg.spacing.sm, 0))
             self._delete_visible = True
 
     def _hide_delete_btn(self) -> None:
         if self._delete_visible:
-            self.delete_btn.pack_forget()
+            self._delete_btn.pack_forget()
             self._delete_visible = False
 
     # ── Status ───────────────────────────────
 
     def _handle_status_change(self) -> None:
-        new_state = self.check.checked
+        new_state = self._check.checked
         self.completed_var.set(new_state)
         self._update_style()
         if self._on_status_change:
@@ -647,15 +460,19 @@ class TaskItem(tk.Frame):
     def _update_style(self) -> None:
         completed = self.completed_var.get()
         if completed:
-            self.label.config(font=config.font_body_strike, fg=config.text_completed)
+            self._label.config(font=self._cfg.fonts.body_strike, fg=self._cfg.colors.text_completed)
         else:
-            self.label.config(font=config.font_body, fg=config.text_primary)
+            self._label.config(font=self._cfg.fonts.body, fg=self._cfg.colors.text_primary)
         # Sync checkbox without triggering redundant redraws
-        self.check.checked = completed
+        self._check.checked = completed
         self._apply_base_bg()
 
     def _current_base_bg(self) -> str:
-        return config.item_bg_completed if self.completed_var.get() else config.item_bg
+        return (
+            self._cfg.colors.item_bg_completed
+            if self.completed_var.get()
+            else self._cfg.colors.item_bg
+        )
 
     def _apply_base_bg(self) -> None:
         self._set_row_bg(self._current_base_bg())
@@ -691,17 +508,17 @@ class TaskItem(tk.Frame):
         """Propagate background colour to all child widgets in the row."""
         self._card_fill = color
         self._content.config(bg=color)
-        self.label.config(bg=color)
-        self.check.set_canvas_bg(color)
-        if self._delete_visible and self.delete_btn.cget("bg") != config.btn_danger_bg:
-            self.delete_btn.config(bg=color)
+        self._label.config(bg=color)
+        self._check.set_canvas_bg(color)
+        if self._delete_visible and self._delete_btn.cget("bg") != self._cfg.colors.btn_danger_bg:
+            self._delete_btn.config(bg=color)
         self._redraw_card()
 
     # ── Card canvas (rounded rect + shadow) ──
 
     def _on_canvas_configure(self, event: tk.Event) -> None:
         content_width = max(1, event.width - 2 * self._radius)
-        self.card_canvas.itemconfigure(self._content_win, width=content_width)
+        self._card_canvas.itemconfigure(self._content_win, width=content_width)
         if self._apply_wrap(content_width):
             # The card's height changes: a new <Configure> follows and redraws it.
             return
@@ -709,7 +526,7 @@ class TaskItem(tk.Frame):
 
     def _refit(self) -> None:
         """Re-wrap the label at the current width (after its text changed)."""
-        width = self.card_canvas.winfo_width()
+        width = self._card_canvas.winfo_width()
         if width <= 1:
             return
         self._wrap_width = 0
@@ -723,11 +540,11 @@ class TaskItem(tk.Frame):
         hover never re-wraps the text.
         """
         reserved = (
-            2 * config.item_padding_x
-            + self.check.winfo_reqwidth()
-            + config.spacing_md
-            + self.delete_btn.winfo_reqwidth()
-            + config.spacing_sm
+            2 * self._cfg.settings.item_padding_x
+            + self._check.winfo_reqwidth()
+            + self._cfg.spacing.md
+            + self._delete_btn.winfo_reqwidth()
+            + self._cfg.spacing.sm
         )
         return max(_MIN_WRAP_WIDTH, content_width - reserved)
 
@@ -737,25 +554,42 @@ class TaskItem(tk.Frame):
         if wrap == self._wrap_width:
             return False
         self._wrap_width = wrap
-        self.label.config(wraplength=wrap)
+        self._label.config(wraplength=wrap)
         # Computed from the children instead of update_idletasks(), which
         # would flush every pending idle task in the app from inside an event.
         content_h = (
-            max(self.label.winfo_reqheight(), self.check.winfo_reqheight())
-            + 2 * config.item_padding_y
+            max(self._label.winfo_reqheight(), self._check.winfo_reqheight())
+            + 2 * self._cfg.settings.item_padding_y
         )
         height = content_h + 2 * self._radius + self._shadow_px
-        if height == int(self.card_canvas.cget("height")):
+        if height == int(self._card_canvas.cget("height")):
             return False
-        self.card_canvas.config(height=height)
+        self._card_canvas.config(height=height)
         return True
 
     def _redraw_card(self, width: int | None = None, height: int | None = None) -> None:
-        w = width if width is not None else self.card_canvas.winfo_width()
-        h = height if height is not None else self.card_canvas.winfo_height()
+        w = width if width is not None else self._card_canvas.winfo_width()
+        h = height if height is not None else self._card_canvas.winfo_height()
         if w <= 1 or h <= 1:
             return
-        self.card_canvas.delete("card")
+
+        if self._drag_active:
+            outline, outline_width = self._cfg.colors.drag_border, 2
+        elif self._has_focus:
+            outline, outline_width = self._cfg.colors.border_focus, 2
+        else:
+            outline, outline_width = self._cfg.colors.border_color, 1
+
+        # Hover, focus, drag and status changes keep the size: recolour the
+        # existing items instead of deleting and recreating all fourteen.
+        if self._card is not None and self._card_size == (w, h):
+            recolor_rounded_rect(
+                self._card_canvas, self._card, self._card_fill, outline, outline_width
+            )
+            return
+
+        self._card_canvas.delete("card")
+        self._card_size = (w, h)
         r = self._radius
         off = self._shadow_px
 
@@ -763,28 +597,20 @@ class TaskItem(tk.Frame):
         # main card (drawn on top, inset by `off`) leaves only a thin sliver
         # visible along the bottom/right edges — a cheap drop-shadow with no
         # real alpha compositing support in Tk.
-        shadow_fill = blend_alpha_hex(config.shadow_color, config.content_bg)
         draw_rounded_rect(
-            self.card_canvas,
+            self._card_canvas,
             off,
             off,
             w,
             h,
             r,
-            fill=shadow_fill,
-            outline=shadow_fill,
+            fill=self._shadow_fill,
+            outline=self._shadow_fill,
             width=0,
             tags=("card",),
         )
-
-        if self._drag_active:
-            outline, outline_width = config.drag_border, 2
-        elif self._has_focus:
-            outline, outline_width = config.border_focus, 2
-        else:
-            outline, outline_width = config.border_color, 1
-        draw_rounded_rect(
-            self.card_canvas,
+        self._card = draw_rounded_rect(
+            self._card_canvas,
             0,
             0,
             w - off,

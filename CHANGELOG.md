@@ -6,6 +6,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+Maintenance and speed release: the code is reorganized, typed and better tested, and long
+lists open and react faster. Nothing changes in how the app looks or is used, and
+`tasks.json` and `state.json` need no migration. `config.json` is checked more strictly:
+a file with an invalid value still falls back to the defaults, with a warning naming the key.
+
+### Changed
+
+- The code is organized in three layers: `fly_notes/model/` (tasks and saving),
+  `fly_notes/ui/` (one module per widget) and `fly_notes/platform/` (Windows window
+  management, window state, single instance). Nothing changes for users. ([#21])
+- Tasks are a typed, immutable `Task` record in the code instead of plain dictionaries.
+  The `tasks.json` format is unchanged. ([#20])
+- Saves are scheduled with Tk's `after()` on the UI thread instead of a background
+  `threading.Timer`, so the task store no longer needs a lock. Saving still happens half a
+  second after the last change, and immediately on close. ([#19])
+- The configuration is typed and passed in explicitly: `load_config()` builds an immutable
+  `AppConfig` (`cfg.colors.header_bg`, `cfg.spacing.md`, ...) in `main()`, and the widgets
+  receive it instead of reading a global that loaded `config.json` at import time. Tests use
+  pure defaults, whatever `config.json` is on the machine. ([#17])
+- `colors.btn_danger_hover` now colors the delete button while it is pressed, and
+  `colors.checkbox_bg` the inside of an unticked checkbox. Both were defined but never used;
+  their defaults keep the current look. ([#18])
+- Tests are split by module (`test_app.py`, `test_task_item.py`, `test_task_list.py`, ...),
+  share their Tk fixtures through `tests/conftest.py`, and the ones that need a display are
+  marked `gui`. `TaskItem` keeps its child widgets private and offers `bind_scroll()`, which
+  also makes the mouse wheel work over the padding around a task's text. ([#22])
+- The code is type-checked with pyright in CI, and imports sit at the top of each file
+  (ruff `PLC0415`). Callback parameters typed with the builtin `callable` now use
+  `Callable[..., None]`. ([#23])
+- The task list re-lays out incrementally: section headers, the separator and the
+  "Show N more" link are created once and reused, and only rows that are new or out of
+  place are packed again. With 100 tasks a swap while dragging takes about 1 ms instead of
+  90 ms, and ticking a task about 30 ms instead of 140 ms. ([#25])
+- Rows past `max_visible_tasks` are built only when "Show N more" reveals them. Before,
+  every task got a full row at startup even if it was never shown. With 1,000 tasks the
+  window opens in about 0.46 s instead of 1.1 s. ([#26])
+- Hovering, focusing, dragging or ticking a task recolours its card in place instead of
+  deleting and redrawing its 14 canvas items, and the shadow colour is computed once per
+  row. A hover now takes about a third of the time. ([#27])
+
+### Fixed
+
+- `config.json` is checked more strictly, and an invalid file falls back to the defaults as
+  before. Newly rejected values:
+  - `0`, negative numbers, `true`/`false` and `null` where a size, limit or delay is expected;
+  - spacing values that are not whole numbers of 0 or more;
+  - `min_width` or `min_height` above the default size;
+  - an unfocused opacity of 0 or above the focused one;
+  - a font size that is not a whole number;
+  - a font family that is not text;
+  - empty shortcuts and non-text strings. ([#18])
+- A shortcut that Tk rejects no longer stops the app from starting: it logs a warning and
+  uses the default for that action. ([#18])
+
+### Removed
+
+- `settings.animation_ms`, which nothing used. If it is still in a `config.json`, it is
+  ignored with a warning. ([#18])
+
 ## [0.2.0] - 2026-11-26
 
 Usability release: undo, editing in place, full keyboard control, a remembered window and an
@@ -97,7 +158,8 @@ the packaged `FlyNotes.exe`.
 Initial version: floating, always-on-top task widget with drag-to-reorder, grouping of
 completed tasks, configurable theme and taskbar-friendly minimize/restore.
 
-[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dbarretol/fly-notes/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/dbarretol/fly-notes/releases/tag/v0.1.1
 [#1]: https://github.com/dbarretol/fly-notes/issues/1
@@ -116,3 +178,13 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#14]: https://github.com/dbarretol/fly-notes/issues/14
 [#15]: https://github.com/dbarretol/fly-notes/issues/15
 [#16]: https://github.com/dbarretol/fly-notes/issues/16
+[#17]: https://github.com/dbarretol/fly-notes/issues/17
+[#18]: https://github.com/dbarretol/fly-notes/issues/18
+[#19]: https://github.com/dbarretol/fly-notes/issues/19
+[#20]: https://github.com/dbarretol/fly-notes/issues/20
+[#21]: https://github.com/dbarretol/fly-notes/issues/21
+[#22]: https://github.com/dbarretol/fly-notes/issues/22
+[#23]: https://github.com/dbarretol/fly-notes/issues/23
+[#25]: https://github.com/dbarretol/fly-notes/issues/25
+[#26]: https://github.com/dbarretol/fly-notes/issues/26
+[#27]: https://github.com/dbarretol/fly-notes/issues/27
