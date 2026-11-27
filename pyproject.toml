@@ -13,6 +13,7 @@ dev = [
     "pyinstaller",
     "pytest",
     "pytest-cov>=7.1.0",
+    "ruff>=0.17",
 ]
 
 [project.scripts]
@@ -25,3 +26,15 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 py-modules = ["main"]
 packages = ["fly_notes"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

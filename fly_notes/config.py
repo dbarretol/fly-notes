@@ -8,10 +8,9 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Set, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,54 +25,48 @@ DEFAULT_TASKS_FILE = _PROJECT_ROOT / "tasks.json"
 _ASSETS_ROOT = Path(getattr(sys, "_MEIPASS", _PROJECT_ROOT))
 ICON_PATH = _ASSETS_ROOT / "assets" / "fly_notes.ico"
 
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "colors": {
         # Surfaces
-        "header_bg":            "#B35C00",
-        "content_bg":           "#FFF4E6",
-        "item_bg":              "#FFFFFF",
-        "item_bg_completed":    "#E8E0D8",
-        "footer_bg":            "#F0E6D8",
-        "separator_color":      "#E0D0C0",
-
+        "header_bg": "#B35C00",
+        "content_bg": "#FFF4E6",
+        "item_bg": "#FFFFFF",
+        "item_bg_completed": "#E8E0D8",
+        "footer_bg": "#F0E6D8",
+        "separator_color": "#E0D0C0",
         # Text
-        "text_primary":         "#2D1810",
-        "text_secondary":       "#5C4033",
-        "text_completed":       "#6B5B4E",
-        "text_on_header":       "#FFFFFF",
-        "text_placeholder":     "#8C7E72",
-        "section_header":       "#8B4500",
-
+        "text_primary": "#2D1810",
+        "text_secondary": "#5C4033",
+        "text_completed": "#6B5B4E",
+        "text_on_header": "#FFFFFF",
+        "text_placeholder": "#8C7E72",
+        "section_header": "#8B4500",
         # Interactive
-        "border_color":         "#D4B896",
-        "border_focus":         "#B35C00",
-        "btn_danger_bg":        "#DC3545",
-        "btn_danger_hover":     "#C82333",
-        "btn_close_hover_bg":   "#FF4500",
-        "btn_header_hover_bg":  "#8B4500",
-        "link_color":           "#8B4D00",
-        "link_hover":           "#B35C00",
-
+        "border_color": "#D4B896",
+        "border_focus": "#B35C00",
+        "btn_danger_bg": "#DC3545",
+        "btn_danger_hover": "#C82333",
+        "btn_close_hover_bg": "#FF4500",
+        "btn_header_hover_bg": "#8B4500",
+        "link_color": "#8B4D00",
+        "link_hover": "#B35C00",
         # Feedback
-        "drag_highlight":       "#FFE0B2",
-        "drag_border":          "#B35C00",
-        "checkbox_check":       "#B35C00",
-        "checkbox_bg":          "#FFFFFF",
-        "checkbox_border":      "#B0977A",
-        "checkbox_hover_bg":    "#FFF0E0",
-        "scrollbar_thumb":      "#A8763F",
-        "scrollbar_track":      "#FFF4E6",
-
+        "drag_highlight": "#FFE0B2",
+        "drag_border": "#B35C00",
+        "checkbox_check": "#B35C00",
+        "checkbox_bg": "#FFFFFF",
+        "checkbox_border": "#B0977A",
+        "checkbox_hover_bg": "#FFF0E0",
+        "scrollbar_thumb": "#A8763F",
+        "scrollbar_track": "#FFF4E6",
         # State
-        "shadow_color":         "#00000015",
-        "empty_state_fg":       "#887868",
+        "shadow_color": "#00000015",
+        "empty_state_fg": "#887868",
     },
-
     "transparency": {
-        "active":   1.0,
+        "active": 1.0,
         "inactive": 0.45,
     },
-
     "spacing": {
         "xs": 2,
         "sm": 4,
@@ -82,62 +75,58 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "xl": 16,
         "xxl": 24,
     },
-
     "settings": {
-        "tasks_file":           str(DEFAULT_TASKS_FILE),
-        "default_width":        320,
-        "default_height":       440,
-        "drag_threshold":       18,
-        "min_width":            240,
-        "min_height":           180,
-        "max_task_length":      300,
-        "item_padding_y":       7,
-        "item_padding_x":       10,
-        "header_height":        38,
-        "footer_height":        32,
-        "border_radius":        6,
-        "animation_ms":         150,
-        "confirm_delete":       False,
-        "max_visible_tasks":    100,
-        "checkbox_size":        18,
-        "group_completed":      True,
-        "separator_height":     1,
-        "scrollbar_width":      8,
+        "tasks_file": str(DEFAULT_TASKS_FILE),
+        "default_width": 320,
+        "default_height": 440,
+        "drag_threshold": 18,
+        "min_width": 240,
+        "min_height": 180,
+        "max_task_length": 300,
+        "item_padding_y": 7,
+        "item_padding_x": 10,
+        "header_height": 38,
+        "footer_height": 32,
+        "border_radius": 6,
+        "animation_ms": 150,
+        "confirm_delete": False,
+        "max_visible_tasks": 100,
+        "checkbox_size": 18,
+        "group_completed": True,
+        "separator_height": 1,
+        "scrollbar_width": 8,
     },
-
     "fonts": {
-        "header":       ["Segoe UI", 10, "bold"],
-        "body":         ["Segoe UI", 11],
-        "body_strike":  ["Segoe UI", 11, "overstrike"],
-        "footer":       ["Segoe UI", 9],
-        "empty_hint":   ["Segoe UI", 10, "italic"],
-        "badge":        ["Segoe UI", 8, "bold"],
-        "section":      ["Segoe UI", 9, "bold"],
+        "header": ["Segoe UI", 10, "bold"],
+        "body": ["Segoe UI", 11],
+        "body_strike": ["Segoe UI", 11, "overstrike"],
+        "footer": ["Segoe UI", 9],
+        "empty_hint": ["Segoe UI", 10, "italic"],
+        "badge": ["Segoe UI", 8, "bold"],
+        "section": ["Segoe UI", 9, "bold"],
     },
-
     "shortcuts": {
-        "new_task":         "<Control-n>",
+        "new_task": "<Control-n>",
         "delete_completed": "<Control-d>",
-        "close":            "<Escape>",
-        "focus_entry":      "<Control-l>",
+        "close": "<Escape>",
+        "focus_entry": "<Control-l>",
     },
-
     "strings": {
-        "app_title":            "Fly Notes",
-        "entry_placeholder":    "Add a new task…",
-        "clear_completed":      "Clear completed ({count})",
+        "app_title": "Fly Notes",
+        "entry_placeholder": "Add a new task…",
+        "clear_completed": "Clear completed ({count})",
         "clear_completed_zero": "Clear completed",
-        "empty_state":          "No tasks yet — type above to start!",
+        "empty_state": "No tasks yet — type above to start!",
         "confirm_delete_title": "Delete Task",
-        "confirm_delete_msg":   "Remove this task permanently?",
-        "confirm_clear_title":  "Clear Completed",
-        "confirm_clear_msg":    "Remove {count} completed task(s)?",
-        "section_pending":      "To Do ({count})",
-        "section_completed":    "Completed ({count})",
-        "more_hidden":          "+ {count} more",
-        "badge_format":         "{done} of {total} done",
-        "btn_close":            "✕",
-        "btn_minimize":         "—",
+        "confirm_delete_msg": "Remove this task permanently?",
+        "confirm_clear_title": "Clear Completed",
+        "confirm_clear_msg": "Remove {count} completed task(s)?",
+        "section_pending": "To Do ({count})",
+        "section_completed": "Completed ({count})",
+        "more_hidden": "+ {count} more",
+        "badge_format": "{done} of {total} done",
+        "btn_close": "✕",
+        "btn_minimize": "—",
     },
 }
 
@@ -146,7 +135,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 # Known keys per section (for deep-merge filtering)
 # ──────────────────────────────────────────────
 
-def _known_keys() -> Dict[str, Set[str]]:
+
+def _known_keys() -> dict[str, set[str]]:
     """Return the set of valid keys for each top-level section."""
     return {section: set(values.keys()) for section, values in DEFAULT_CONFIG.items()}
 
@@ -158,7 +148,8 @@ _KNOWN_KEYS = _known_keys()
 # Contrast validation (WCAG AA)
 # ──────────────────────────────────────────────
 
-def _hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     """Convert a hex colour (#RGB, #RRGGBB, #RRGGBBAA) to (r, g, b).
     Alpha channel is stripped if present."""
     h = hex_color.lstrip("#")
@@ -175,6 +166,7 @@ def _relative_luminance(r: int, g: int, b: int) -> float:
     def _ch(c: int) -> float:
         s = c / 255.0
         return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+
     return 0.2126 * _ch(r) + 0.7152 * _ch(g) + 0.0722 * _ch(b)
 
 
@@ -189,9 +181,9 @@ def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:
     rgba = rgba_hex.lstrip("#")
     if len(rgba) != 8:
         return f"#{rgba[:6]}" if len(rgba) >= 6 else background_hex
-    r, g, b, a = (int(rgba[i:i + 2], 16) for i in (0, 2, 4, 6))
+    r, g, b, a = (int(rgba[i : i + 2], 16) for i in (0, 2, 4, 6))
     bg = background_hex.lstrip("#")
-    br, bgc, bb = (int(bg[i:i + 2], 16) for i in (0, 2, 4))
+    br, bgc, bb = (int(bg[i : i + 2], 16) for i in (0, 2, 4))
     alpha = a / 255.0
     out_r = round(r * alpha + br * (1 - alpha))
     out_g = round(g * alpha + bgc * (1 - alpha))
@@ -206,15 +198,15 @@ def _contrast_ratio(fg: str, bg: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-_CONTRAST_PAIRS: list[Tuple[str, str, float]] = [
-    ("text_primary",     "item_bg",           4.5),
-    ("text_completed",   "item_bg_completed", 4.5),
-    ("text_on_header",   "header_bg",         4.5),
-    ("text_secondary",   "content_bg",        4.5),
-    ("section_header",   "content_bg",        4.5),
-    ("text_placeholder", "item_bg",           3.0),
-    ("link_color",       "footer_bg",         4.5),
-    ("empty_state_fg",   "content_bg",        3.0),
+_CONTRAST_PAIRS: list[tuple[str, str, float]] = [
+    ("text_primary", "item_bg", 4.5),
+    ("text_completed", "item_bg_completed", 4.5),
+    ("text_on_header", "header_bg", 4.5),
+    ("text_secondary", "content_bg", 4.5),
+    ("section_header", "content_bg", 4.5),
+    ("text_placeholder", "item_bg", 3.0),
+    ("link_color", "footer_bg", 4.5),
+    ("empty_state_fg", "content_bg", 3.0),
 ]
 
 
@@ -231,13 +223,13 @@ def _is_color(value: Any) -> bool:
         return False
 
 
-def _validate_colors(colors: Dict[str, str]) -> None:
+def _validate_colors(colors: dict[str, str]) -> None:
     for key, val in colors.items():
         if not _is_color(val):
             raise ValueError(f"colors.{key}: '{val}' is not a valid hex colour")
 
 
-def _validate_contrast(colors: Dict[str, str]) -> None:
+def _validate_contrast(colors: dict[str, str]) -> None:
     for fg_key, bg_key, min_ratio in _CONTRAST_PAIRS:
         fg, bg = colors.get(fg_key), colors.get(bg_key)
         if not fg or not bg:
@@ -250,26 +242,41 @@ def _validate_contrast(colors: Dict[str, str]) -> None:
             if ratio < min_ratio:
                 logger.warning(
                     "WCAG contrast fail: %s (%s) on %s (%s) = %.2f:1 (need %.1f:1)",
-                    fg_key, fg, bg_key, bg, ratio, min_ratio,
+                    fg_key,
+                    fg,
+                    bg_key,
+                    bg,
+                    ratio,
+                    min_ratio,
                 )
         except Exception:
             pass
 
 
-def _validate_transparency(trans: Dict[str, float]) -> None:
+def _validate_transparency(trans: dict[str, float]) -> None:
     for key in ("active", "inactive"):
         val = trans.get(key)
         if not isinstance(val, (int, float)) or not (0.0 <= val <= 1.0):
             raise ValueError(f"transparency.{key}: must be float 0.0-1.0, got {val!r}")
 
 
-def _validate_settings(settings: Dict[str, Any]) -> None:
+def _validate_settings(settings: dict[str, Any]) -> None:
     int_keys = (
-        "default_width", "default_height", "drag_threshold",
-        "min_width", "min_height", "max_task_length",
-        "item_padding_y", "item_padding_x", "header_height",
-        "footer_height", "border_radius", "animation_ms",
-        "max_visible_tasks", "checkbox_size", "separator_height",
+        "default_width",
+        "default_height",
+        "drag_threshold",
+        "min_width",
+        "min_height",
+        "max_task_length",
+        "item_padding_y",
+        "item_padding_x",
+        "header_height",
+        "footer_height",
+        "border_radius",
+        "animation_ms",
+        "max_visible_tasks",
+        "checkbox_size",
+        "separator_height",
         "scrollbar_width",
     )
     for key in int_keys:
@@ -288,7 +295,7 @@ def _validate_settings(settings: Dict[str, Any]) -> None:
         raise ValueError(f"settings.tasks_file: must be a string path, got {tf!r}")
 
 
-def _validate_fonts(fonts: Dict[str, list]) -> None:
+def _validate_fonts(fonts: dict[str, list]) -> None:
     for key, val in fonts.items():
         if not isinstance(val, list) or len(val) < 2:
             raise ValueError(f"fonts.{key}: expected [family, size, ...], got {val!r}")
@@ -300,19 +307,19 @@ def _validate_fonts(fonts: Dict[str, list]) -> None:
 
 # Map from property name → (section, key, cast)
 # This is built automatically; only special-name mappings are listed here.
-_PROPERTY_ALIASES: Dict[str, Tuple[str, str]] = {
+_PROPERTY_ALIASES: dict[str, tuple[str, str]] = {
     # Aliases where property name ≠ key name
     "drag_highlight_color": ("colors", "drag_highlight"),
-    "active_alpha":         ("transparency", "active"),
-    "inactive_alpha":       ("transparency", "inactive"),
+    "active_alpha": ("transparency", "active"),
+    "inactive_alpha": ("transparency", "inactive"),
 }
 
 # Section-level prefixes for auto-resolution
-_SECTION_PREFIXES: Dict[str, Tuple[str, ...]] = {
-    "colors":       (),
+_SECTION_PREFIXES: dict[str, tuple[str, ...]] = {
+    "colors": (),
     "transparency": (),
-    "settings":     (),
-    "shortcuts":    (),
+    "settings": (),
+    "shortcuts": (),
 }
 
 _SPACING_PREFIX = "spacing_"
@@ -337,10 +344,10 @@ class Config:
     """
 
     def __init__(self) -> None:
-        self._data: Dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
+        self._data: dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
         self._load()
         # Pre-build a lookup cache for __getattr__
-        self._attr_cache: Dict[str, Any] = {}
+        self._attr_cache: dict[str, Any] = {}
 
     # ── Loading ──────────────────────────────
 
@@ -350,7 +357,7 @@ class Config:
             self._post_validate()
             return
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+            with open(CONFIG_FILE, encoding="utf-8") as fh:
                 user_cfg = json.load(fh)
             if not isinstance(user_cfg, dict):
                 raise TypeError(f"Config root must be a dict, got {type(user_cfg).__name__}")
@@ -416,19 +423,19 @@ class Config:
 
         # 2. spacing_<key>
         if name.startswith(_SPACING_PREFIX):
-            key = name[len(_SPACING_PREFIX):]
+            key = name[len(_SPACING_PREFIX) :]
             if key in self._data["spacing"]:
                 return int(self._data["spacing"][key])
 
         # 3. font_<key>
         if name.startswith(_FONT_PREFIX):
-            key = name[len(_FONT_PREFIX):]
+            key = name[len(_FONT_PREFIX) :]
             if key in self._data["fonts"]:
                 return tuple(self._data["fonts"][key])
 
         # 4. shortcut_<key>
         if name.startswith(_SHORTCUT_PREFIX):
-            key = name[len(_SHORTCUT_PREFIX):]
+            key = name[len(_SHORTCUT_PREFIX) :]
             if key in self._data["shortcuts"]:
                 return str(self._data["shortcuts"][key])
 

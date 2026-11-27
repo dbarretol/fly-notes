@@ -17,6 +17,7 @@ def _resize(edge, dx, dy):
 
 # ── One edge per axis, growing and shrinking ─
 
+
 def test_east_edge_grows_width_only():
     x, y, w, h = _resize("e", dx=50, dy=0)
     assert (x, y, w, h) == (100, 50, 350, 400)
@@ -38,6 +39,7 @@ def test_north_edge_grows_height_and_moves_y():
 
 
 # ── Corners: both axes at once ───────────────
+
 
 def test_northeast_corner():
     x, y, w, h = _resize("ne", dx=30, dy=-20)
@@ -61,8 +63,9 @@ def test_southwest_corner():
 
 # ── Clamping at min_width/min_height ─────────
 
+
 def test_east_edge_clamps_at_min_width():
-    x, y, w, h = _resize("e", dx=-1000, dy=0)
+    x, y, w, _h = _resize("e", dx=-1000, dy=0)
     assert w == MIN["min_width"]
     assert (x, y) == (100, 50)  # east edge never moves x
 
@@ -71,19 +74,19 @@ def test_west_edge_clamps_and_freezes_right_edge():
     # Dragging west edge far to the right (dx large positive) shrinks
     # width toward min; x must stop advancing once clamped, so the
     # window's right edge (x + w) stays fixed rather than drifting.
-    x, y, w, h = _resize("w", dx=1000, dy=0)
+    x, _y, w, _h = _resize("w", dx=1000, dy=0)
     assert w == MIN["min_width"]
     assert x + w == START["start_win_x"] + START["start_w"]
 
 
 def test_south_edge_clamps_at_min_height():
-    x, y, w, h = _resize("s", dx=0, dy=-1000)
+    x, y, _w, h = _resize("s", dx=0, dy=-1000)
     assert h == MIN["min_height"]
     assert (x, y) == (100, 50)  # south edge never moves y
 
 
 def test_north_edge_clamps_and_freezes_bottom_edge():
-    x, y, w, h = _resize("n", dx=0, dy=1000)
+    _x, y, _w, h = _resize("n", dx=0, dy=1000)
     assert h == MIN["min_height"]
     assert y + h == START["start_win_y"] + START["start_h"]
 
@@ -97,10 +100,13 @@ def test_northwest_corner_clamps_both_axes():
 
 # ── No-op ─────────────────────────────────────
 
+
 def test_zero_delta_is_a_no_op_for_every_edge():
     for edge in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
         x, y, w, h = _resize(edge, dx=0, dy=0)
         assert (x, y, w, h) == (
-            START["start_win_x"], START["start_win_y"],
-            START["start_w"], START["start_h"],
+            START["start_win_x"],
+            START["start_win_y"],
+            START["start_w"],
+            START["start_h"],
         )
