@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+Maintenance and speed release: the code is reorganized, typed and better tested, and long
+lists open and react faster. Nothing changes in how the app looks or is used, and
+`tasks.json` and `state.json` need no migration. `config.json` is checked more strictly:
+a file with an invalid value still falls back to the defaults, with a warning naming the key.
+
 ### Changed
 
 - The code is organized in three layers: `fly_notes/model/` (tasks and saving),
@@ -151,7 +158,8 @@ the packaged `FlyNotes.exe`.
 Initial version: floating, always-on-top task widget with drag-to-reorder, grouping of
 completed tasks, configurable theme and taskbar-friendly minimize/restore.
 
-[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dbarretol/fly-notes/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/dbarretol/fly-notes/releases/tag/v0.1.1
 [#1]: https://github.com/dbarretol/fly-notes/issues/1

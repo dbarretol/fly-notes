@@ -16,8 +16,9 @@ runtime dependencies.
 ## Conventions
 
 - Code, comments, commits, issues and pull requests are in English.
-- Branches: `feat/*`, `fix/*`, `docs/*` and `chore/*` branch off `dev` and go back to it through
-  a pull request. `main` only receives release pull requests from `dev`.
+- Branches: `feat/*`, `fix/*`, `refactor/*`, `perf/*`, `docs/*` and `chore/*` branch off
+  `dev` and go back to it through a pull request. `main` only receives release pull requests
+  from `dev`.
 - Imports go at the top of the file (ruff `PLC0415`). The only exceptions are the
   Windows-only `ctypes` imports inside a `try` that falls back when they fail; they carry
   a `# noqa: PLC0415` with the reason.

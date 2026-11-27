@@ -360,7 +360,7 @@ fly-notes/
 
 ```mermaid
 flowchart LR
-    feat["feat/* · fix/* · docs/* · chore/*"] -- "pull request<br/>(CI must pass)" --> dev
+    feat["feat/* · fix/* · refactor/* · perf/* · docs/* · chore/*"] -- "pull request<br/>(CI must pass)" --> dev
     dev -- "release pull request<br/>+ tag vX.Y.Z" --> main
 ```
 
