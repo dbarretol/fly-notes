@@ -185,8 +185,11 @@ The full list of keys and their defaults is `DEFAULT_CONFIG` in
 A mistake can't break the app:
 
 - Unknown keys are ignored, and a warning is logged.
-- An invalid value, such as a malformed color, makes Fly Notes ignore the whole file and use
-  the defaults.
+- An invalid value makes Fly Notes ignore the whole file and use the defaults. That includes a
+  malformed color, a size or limit of `0`, `true` where a number is expected, a font size that
+  is not a whole number, `min_width` above `default_width` (or the same for heights), and an
+  unfocused opacity above the focused one.
+- A shortcut Tk doesn't understand falls back to its default; the other settings still apply.
 - A color pair with poor contrast (below the WCAG ratio) only logs a warning.
 
 ## Where your data lives
