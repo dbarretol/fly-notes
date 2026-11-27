@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   development tools in `uv.lock`. ([#32])
 - The README shows how to check a downloaded `FlyNotes.exe` against its published SHA-256. The
   `.exe` stays unsigned. ([#32])
+- Optional dark theme: set `settings.theme` to `"dark"` in `config.json`. Colors set in
+  `colors` still override the preset, and both presets pass the same contrast checks. The
+  new-task field and the inline editor now take their background from `item_bg` instead of a
+  fixed white. ([#65])
 
 ## [0.3.0] - 2026-11-27
 
@@ -204,3 +208,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#29]: https://github.com/dbarretol/fly-notes/issues/29
 [#30]: https://github.com/dbarretol/fly-notes/issues/30
 [#32]: https://github.com/dbarretol/fly-notes/issues/32
+[#65]: https://github.com/dbarretol/fly-notes/issues/65

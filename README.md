@@ -68,6 +68,7 @@ dependencies, and ships as a single `.exe`.
 
 **Configurable**
 
+- A light theme by default and an optional [dark theme](#dark-theme).
 - Colors, transparency, spacing, fonts, shortcuts, behavior and every UI string can be
   overridden with an optional `config.json`.
 
@@ -181,7 +182,7 @@ Example: a green header and a larger default window.
 |---|---|---|
 | `colors` | Every color in the UI | `header_bg`, `content_bg`, `border_focus`, `link_color` |
 | `transparency` | Window opacity, `0.0`–`1.0` | `active` (focused, default `1.0`), `inactive` (default `0.75`) |
-| `settings` | Sizes and behavior | `default_width`, `always_on_top`, `max_visible_tasks`, `undo_timeout_ms`, `group_completed`, `tasks_file` |
+| `settings` | Sizes and behavior | `theme`, `default_width`, `always_on_top`, `max_visible_tasks`, `undo_timeout_ms`, `group_completed`, `tasks_file` |
 | `spacing` | Paddings and gaps | `sm`, `md`, `lg` |
 | `fonts` | `[family, size, style…]` per text role | `body`, `header`, `section` |
 | `shortcuts` | Window-wide key bindings (Tk syntax) | `new_task`, `undo`, `toggle_always_on_top`, `close` |
@@ -190,13 +191,36 @@ Example: a green header and a larger default window.
 The full list of keys and their defaults is `DEFAULT_CONFIG` in
 [`fly_notes/config.py`](fly_notes/config.py).
 
+### Dark theme
+
+Set `settings.theme` to `"dark"` to switch every color to the dark preset (`DARK_COLORS` in
+[`fly_notes/config.py`](fly_notes/config.py)). The default is `"light"`.
+
+```json
+{
+  "settings": { "theme": "dark" }
+}
+```
+
+Colors you set in `colors` still win over the preset, so you can change a few of them:
+
+```json
+{
+  "settings": { "theme": "dark" },
+  "colors": { "header_bg": "#2D6A4F", "border_focus": "#52B788" }
+}
+```
+
+Both presets pass the same contrast checks. The theme is read at startup, so restart Fly Notes
+after changing it.
+
 A mistake can't break the app:
 
 - Unknown keys are ignored, and a warning is logged.
 - An invalid value makes Fly Notes ignore the whole file and use the defaults. That includes a
   malformed color, a size or limit of `0`, `true` where a number is expected, a font size that
-  is not a whole number, `min_width` above `default_width` (or the same for heights), and an
-  unfocused opacity above the focused one.
+  is not a whole number, `min_width` above `default_width` (or the same for heights), an
+  unfocused opacity above the focused one, and a `theme` other than `"light"` or `"dark"`.
 - A shortcut Tk doesn't understand falls back to its default; the other settings still apply.
 - A color pair with poor contrast (below the WCAG ratio) only logs a warning.
 

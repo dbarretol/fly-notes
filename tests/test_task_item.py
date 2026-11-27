@@ -4,6 +4,7 @@ import tkinter as tk
 import types
 from typing import cast
 
+from fly_notes.config import default_config
 from fly_notes.ui import task_item as task_item_module
 from fly_notes.ui.task_item import TaskItem
 from fly_notes.ui.task_list import TaskListView
@@ -514,5 +515,15 @@ def test_shadow_colour_is_flattened_once(root, cfg, monkeypatch):
         item._redraw_card(w + 10, h)
         item._on_enter()
         assert calls == []
+    finally:
+        win.destroy()
+
+
+def test_inline_editor_background_follows_the_theme(root, tmp_path):
+    dark = default_config(tasks_file=tmp_path / "tasks.json", theme="dark")
+    win, item = _editable_item(root, dark)
+    try:
+        item.begin_edit()
+        assert _editor(item).cget("bg") == dark.colors.item_bg
     finally:
         win.destroy()
