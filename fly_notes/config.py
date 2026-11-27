@@ -123,7 +123,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "undo_action": "Undo",
         "section_pending": "To Do ({count})",
         "section_completed": "Completed ({count})",
-        "more_hidden": "+ {count} more",
+        "more_hidden": "Show {count} more",
+        "more_hidden_paged": "Show {count} more (of {hidden})",
         "badge_format": "{done} of {total} done",
         "btn_close": "✕",
         "btn_minimize": "—",
@@ -206,6 +207,7 @@ _CONTRAST_PAIRS: list[tuple[str, str, float]] = [
     ("section_header", "content_bg", 4.5),
     ("text_placeholder", "item_bg", 3.0),
     ("link_color", "footer_bg", 4.5),
+    ("link_color", "content_bg", 4.5),  # "Show N more" link in the task list
     ("empty_state_fg", "content_bg", 3.0),
 ]
 

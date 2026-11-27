@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The "+ N more" hint below a long list is now a "Show N more" link (also usable with
+  `Enter`/`Space`) that reveals the hidden tasks, `max_visible_tasks` at a time. The startup
+  contrast check now also warns when `link_color` is below 4.5:1 on `content_bg`. ([#12])
 - "Clear completed" no longer asks for confirmation, since it can be undone. The
   `confirm_clear_title` and `confirm_clear_msg` strings were removed. ([#9])
 
@@ -82,3 +85,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#9]: https://github.com/dbarretol/fly-notes/issues/9
 [#10]: https://github.com/dbarretol/fly-notes/issues/10
 [#11]: https://github.com/dbarretol/fly-notes/issues/11
+[#12]: https://github.com/dbarretol/fly-notes/issues/12

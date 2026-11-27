@@ -989,9 +989,9 @@ def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_pa
 
 
 def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
-    """The '+N more' hint is a meta note, not a structural separator --
-    it must stay lowercase and use text_secondary/font_footer, not the
-    bold uppercase section_header treatment."""
+    """The 'Show N more' link is a meta note, not a structural separator --
+    it must stay lowercase and use link_color/font_footer, not the bold
+    uppercase section_header treatment."""
     task_list = TaskListView(root)
     widgets = []
     for i in range(5):
@@ -1010,7 +1010,7 @@ def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
             if isinstance(w, tk.Label) and "more" in w.cget("text")
         )
         assert more_label.cget("text") == config.string("more_hidden", count=2)
-        assert more_label.cget("fg") == config.text_secondary
+        assert more_label.cget("fg") == config.link_color
         assert "bold" not in str(more_label.cget("font"))
     finally:
         config._data["settings"]["max_visible_tasks"] = original_limit
@@ -1018,6 +1018,79 @@ def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
         for w in widgets:
             w.destroy()
         task_list.destroy()
+
+
+# ── "Show N more" is actionable (#12) ────────
+
+
+@pytest.fixture
+def capped_list(root, monkeypatch):
+    """A TaskListView with 8 tasks and max_visible_tasks=3."""
+    monkeypatch.setitem(config._attr_cache, "max_visible_tasks", 3)
+    task_list = TaskListView(root)
+    widgets = []
+    for i in range(8):
+        w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+        task_list.add_widget(w)
+        widgets.append(w)
+    task_list.repack()
+    yield task_list, widgets
+    task_list.destroy()
+
+
+def _show_more_link(task_list):
+    links = [
+        w
+        for w in task_list._transient_widgets
+        if isinstance(w, tk.Label) and w.cget("cursor") == "hand2"
+    ]
+    return links[0] if links else None
+
+
+def _packed_ids(widgets):
+    return [w.task_id for w in widgets if w.winfo_manager()]
+
+
+def test_show_more_link_names_the_next_page_and_the_total(capped_list):
+    task_list, widgets = capped_list
+    link = _show_more_link(task_list)
+    assert link.cget("text") == config.string("more_hidden_paged", count=3, hidden=5)
+    assert _packed_ids(widgets) == ["0", "1", "2"]
+
+
+def test_clicking_show_more_reveals_one_page_at_a_time(capped_list):
+    task_list, widgets = capped_list
+
+    _show_more_link(task_list).event_generate("<Button-1>")
+    assert _packed_ids(widgets) == ["0", "1", "2", "3", "4", "5"]
+    link = _show_more_link(task_list)
+    assert link.cget("text") == config.string("more_hidden", count=2)
+
+    link.event_generate("<Button-1>")
+    assert _packed_ids(widgets) == [str(i) for i in range(8)]
+    assert _show_more_link(task_list) is None
+
+
+def test_show_more_works_from_the_keyboard(capped_list):
+    task_list, _ = capped_list
+    link = _show_more_link(task_list)
+    assert int(link.cget("takefocus")) == 1
+    assert link.bind("<Return>")
+    assert link.bind("<space>")
+
+
+def test_revealed_rows_stay_visible_after_a_repack(capped_list):
+    """Adding/toggling a task repacks the list: it must not collapse again."""
+    task_list, widgets = capped_list
+    task_list.show_more()
+    task_list.repack()
+    assert len(_packed_ids(widgets)) == 6
+
+
+def test_link_color_is_validated_against_the_list_background():
+    from fly_notes.config import _CONTRAST_PAIRS
+
+    assert ("link_color", "content_bg", 4.5) in _CONTRAST_PAIRS
 
 
 # ── Window icon (issues-v4 #5) ───────────────
