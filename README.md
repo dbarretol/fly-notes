@@ -40,7 +40,10 @@ reliable minimize/restore using a taskbar proxy window.
 
 ## Screens / Demo
 
-_(Add a screenshot or GIF here)_
+<p align="center">
+  <img src="docs/images/fly-notes.png" width="330"
+       alt="Fly Notes window: a header with the always-on-top pin, the new-task field, a To Do section with four tasks (one wrapping onto two lines), a Completed section with two struck-through tasks, and a footer reading '2 of 6 done' with a 'Clear completed (2)' link">
+</p>
 
 ## Keyboard Shortcuts
 
@@ -116,7 +119,7 @@ FLY_NOTES/
 │   ├── single_instance.py     # One running copy per tasks file (Windows named mutex)
 │   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
 ├── tests/                     # pytest suite (task manager, config, paths, window state, single instance, UI)
-├── docs/                      # Contributor notes (AGENTS.md: tooling conventions)
+├── docs/                      # Contributor notes (AGENTS.md) and README images
 ├── .github/                   # CI workflow (ruff + pytest on Windows) and PR template
 ├── config.json                # Optional — your local overrides (not tracked; see below)
 ├── tasks.json                 # Your task data when running from source (not tracked)
