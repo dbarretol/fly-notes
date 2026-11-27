@@ -1,9 +1,10 @@
 """
 Data layer — task CRUD with debounced atomic persistence.
 
-Thread-safe: all mutations and reads of ``_tasks`` are protected
-by ``_lock``.  The save timer serialises a snapshot under the lock
-and writes to disk outside it.
+Everything runs on the caller's thread. Saves are debounced through an
+injected ``Scheduler``: the UI passes one backed by Tk's ``after()``, and
+tests pass a fake they can fire by hand. Without a scheduler, changes are
+only written by ``flush()``.
 """
 
 from __future__ import annotations
@@ -13,10 +14,10 @@ import logging
 import os
 import shutil
 import tempfile
-import threading
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
+from typing import Protocol
 
 from .task import MAX_TEXT_LENGTH, Task
 
@@ -25,26 +26,37 @@ logger = logging.getLogger(__name__)
 _UNDO_LIMIT = 20  # Deletions remembered for undo (each "clear completed" counts as one)
 
 
+class Scheduler(Protocol):
+    """Runs a callback later on the same thread, like Tk's ``after()``."""
+
+    def schedule(self, delay_ms: int, callback: Callable[[], None]) -> object:
+        """Run *callback* after *delay_ms*; return a handle for ``cancel``."""
+        ...
+
+    def cancel(self, handle: object) -> None:
+        """Stop a scheduled callback from running (no-op if it already ran)."""
+        ...
+
+
 class TaskManager:
     """Manages task lifecycle and JSON persistence.
 
-    All public methods are safe to call from the main thread.
-    The debounced save runs on a daemon ``Timer`` thread but only
-    reads a snapshot taken under the lock.
+    Not thread-safe: use it from one thread (the Tk main thread in the app).
     """
 
-    SAVE_DELAY: float = 0.5
+    SAVE_DELAY_MS: int = 500
 
     def __init__(
         self,
         tasks_file: str = "tasks.json",
         error_callback: Callable[[str], None] | None = None,
+        scheduler: Scheduler | None = None,
     ) -> None:
         self.tasks_file = tasks_file
         self.error_callback = error_callback
+        self._scheduler = scheduler
+        self._pending_save: object | None = None
         self._tasks: list[Task] = []
-        self._save_timer: threading.Timer | None = None
-        self._lock = threading.Lock()
         # Set when an unreadable tasks file could not be moved aside: saving
         # would overwrite the user's only copy, so writes are refused instead.
         self._saves_blocked = False
@@ -58,35 +70,30 @@ class TaskManager:
         """Rolling copy of the previous tasks file, refreshed before every save."""
         return self.tasks_file + ".bak"
 
-    # ── Read access (thread-safe) ────────────
+    # ── Read access ──────────────────────────
     # Tasks are immutable, so handing them out needs no copy: only the list is copied.
 
     @property
     def tasks(self) -> list[Task]:
         """Return a copy of the task list."""
-        with self._lock:
-            return list(self._tasks)
+        return list(self._tasks)
 
     @property
     def task_count(self) -> int:
-        with self._lock:
-            return len(self._tasks)
+        return len(self._tasks)
 
     @property
     def completed_count(self) -> int:
-        with self._lock:
-            return sum(1 for t in self._tasks if t.completed)
+        return sum(1 for t in self._tasks if t.completed)
 
     @property
     def pending_count(self) -> int:
-        with self._lock:
-            return len(self._tasks) - sum(1 for t in self._tasks if t.completed)
+        return len(self._tasks) - sum(1 for t in self._tasks if t.completed)
 
     def task_by_id(self, task_id: str) -> Task | None:
-        with self._lock:
-            for t in self._tasks:
-                if t.id == task_id:
-                    return t
+        for t in self._tasks:
+            if t.id == task_id:
+                return t
         return None
 
     def index_of(self, task_id: str) -> int:
@@ -94,42 +101,38 @@ class TaskManager:
 
         Raises ``ValueError`` if not found.
         """
-        with self._lock:
-            for i, t in enumerate(self._tasks):
-                if t.id == task_id:
-                    return i
+        for i, t in enumerate(self._tasks):
+            if t.id == task_id:
+                return i
         raise ValueError(f"Task id '{task_id}' not found")
 
     # ── CRUD ─────────────────────────────────
 
     def add_task(self, text: str, completed: bool = False) -> Task:
         task = Task.new(text, completed)
-        with self._lock:
-            self._tasks.append(task)
+        self._tasks.append(task)
         self._schedule_save()
         # Only the id: task text is user content and stays out of the logs.
         logger.info("Task added: id=%s", task.id)
         return task
 
     def delete_task(self, task_id: str) -> Task | None:
-        with self._lock:
-            idx = self._index_of_unlocked(task_id)
-            if idx is None:
-                logger.warning("delete_task: id '%s' not found", task_id)
-                return None
-            removed = self._tasks.pop(idx)
-            self._push_undo([(idx, removed)])
+        idx = self._find_index(task_id)
+        if idx is None:
+            logger.warning("delete_task: id '%s' not found", task_id)
+            return None
+        removed = self._tasks.pop(idx)
+        self._push_undo([(idx, removed)])
         self._schedule_save()
         logger.info("Task deleted: %s", task_id)
         return removed
 
     def toggle_task(self, task_id: str) -> Task | None:
-        with self._lock:
-            idx = self._index_of_unlocked(task_id)
-            if idx is None:
-                return None
-            result = replace(self._tasks[idx], completed=not self._tasks[idx].completed)
-            self._tasks[idx] = result
+        idx = self._find_index(task_id)
+        if idx is None:
+            return None
+        result = replace(self._tasks[idx], completed=not self._tasks[idx].completed)
+        self._tasks[idx] = result
         self._schedule_save()
         logger.info("Task toggled: %s → %s", task_id, result.completed)
         return result
@@ -146,35 +149,32 @@ class TaskManager:
         clean = clean[:limit].rstrip()
         if not clean:
             return None
-        with self._lock:
-            idx = self._index_of_unlocked(task_id)
-            if idx is None:
-                logger.warning("update_text: id '%s' not found", task_id)
-                return None
-            if self._tasks[idx].text == clean:
-                return None
-            result = replace(self._tasks[idx], text=clean)
-            self._tasks[idx] = result
+        idx = self._find_index(task_id)
+        if idx is None:
+            logger.warning("update_text: id '%s' not found", task_id)
+            return None
+        if self._tasks[idx].text == clean:
+            return None
+        result = replace(self._tasks[idx], text=clean)
+        self._tasks[idx] = result
         self._schedule_save()
         logger.info("Task edited: %s", task_id)
         return result
 
     def reorder_tasks(self, old_idx: int, new_idx: int) -> bool:
-        with self._lock:
-            if not (0 <= old_idx < len(self._tasks) and 0 <= new_idx < len(self._tasks)):
-                return False
-            task = self._tasks.pop(old_idx)
-            self._tasks.insert(new_idx, task)
+        if not (0 <= old_idx < len(self._tasks) and 0 <= new_idx < len(self._tasks)):
+            return False
+        task = self._tasks.pop(old_idx)
+        self._tasks.insert(new_idx, task)
         self._schedule_save()
         return True
 
     def clear_completed(self) -> int:
-        with self._lock:
-            cleared = [(i, t) for i, t in enumerate(self._tasks) if t.completed]
-            self._tasks = [t for t in self._tasks if not t.completed]
-            removed = len(cleared)
-            if cleared:
-                self._push_undo(cleared)
+        cleared = [(i, t) for i, t in enumerate(self._tasks) if t.completed]
+        self._tasks = [t for t in self._tasks if not t.completed]
+        removed = len(cleared)
+        if cleared:
+            self._push_undo(cleared)
         self._schedule_save()
         logger.info("Cleared %d completed task(s)", removed)
         return removed
@@ -183,8 +183,7 @@ class TaskManager:
 
     @property
     def can_undo(self) -> bool:
-        with self._lock:
-            return bool(self._undo_stack)
+        return bool(self._undo_stack)
 
     def undo(self) -> list[Task]:
         """Restore the most recent deletion (or "clear completed") in place.
@@ -193,57 +192,56 @@ class TaskManager:
         the end of the list, if the list has since become shorter). Returns
         the restored tasks in list order; empty if nothing to undo.
         """
-        with self._lock:
-            if not self._undo_stack:
-                return []
-            entry = self._undo_stack.pop()
-            present = {t.id for t in self._tasks}
-            restored: list[Task] = []
-            for idx, task in entry:
-                if task.id in present:
-                    continue
-                self._tasks.insert(min(idx, len(self._tasks)), task)
-                restored.append(task)
+        if not self._undo_stack:
+            return []
+        entry = self._undo_stack.pop()
+        present = {t.id for t in self._tasks}
+        restored: list[Task] = []
+        for idx, task in entry:
+            if task.id in present:
+                continue
+            self._tasks.insert(min(idx, len(self._tasks)), task)
+            restored.append(task)
         if restored:
             self._schedule_save()
         logger.info("Undo restored %d task(s)", len(restored))
         return restored
 
     def _push_undo(self, entry: list[tuple[int, Task]]) -> None:
-        """Remember a removal. Must be called while ``self._lock`` is held."""
+        """Remember a removal, keeping only the last ``_UNDO_LIMIT``."""
         self._undo_stack.append(entry)
         del self._undo_stack[:-_UNDO_LIMIT]
 
     # ── Persistence ──────────────────────────
 
     def _schedule_save(self) -> None:
-        with self._lock:
-            if self._save_timer is not None:
-                self._save_timer.cancel()
-            self._save_timer = threading.Timer(self.SAVE_DELAY, self._do_save)
-            self._save_timer.daemon = True
-            self._save_timer.start()
+        """Save ``SAVE_DELAY_MS`` from now, replacing any save already pending."""
+        if self._scheduler is None:
+            return
+        self._cancel_pending_save()
+        self._pending_save = self._scheduler.schedule(self.SAVE_DELAY_MS, self._run_pending_save)
+
+    def _run_pending_save(self) -> None:
+        self._pending_save = None
+        self._do_save()
+
+    def _cancel_pending_save(self) -> None:
+        if self._pending_save is not None and self._scheduler is not None:
+            self._scheduler.cancel(self._pending_save)
+        self._pending_save = None
 
     def flush(self) -> None:
-        """Cancel any pending timer and save immediately (synchronous)."""
-        with self._lock:
-            if self._save_timer is not None:
-                self._save_timer.cancel()
-                self._save_timer = None
+        """Cancel any pending save and save immediately (synchronous)."""
+        self._cancel_pending_save()
         self._do_save()
 
     def _do_save(self) -> None:
-        """Persist tasks to disk atomically.
-
-        Takes a snapshot under the lock, then writes outside it so
-        the lock is never held during I/O.
-        """
+        """Persist tasks to disk atomically."""
         if self._saves_blocked:
             logger.warning("Save skipped: %s could not be read or moved aside", self.tasks_file)
             return
 
-        with self._lock:
-            snapshot = [t.to_dict() for t in self._tasks]
+        snapshot = [t.to_dict() for t in self._tasks]
 
         try:
             dir_name = os.path.dirname(self.tasks_file) or "."
@@ -269,7 +267,6 @@ class TaskManager:
             msg = f"Error saving tasks: {exc}"
             logger.error(msg, exc_info=True)
             if self.error_callback:
-                # Callback is expected to be thread-safe (e.g. root.after)
                 self.error_callback(msg)
 
     def _refresh_backup(self) -> None:
@@ -384,12 +381,8 @@ class TaskManager:
 
     # ── Internal helpers ─────────────────────
 
-    def _index_of_unlocked(self, task_id: str) -> int | None:
-        """Find index of *task_id* WITHOUT acquiring the lock.
-
-        Must be called while ``self._lock`` is already held.
-        Returns ``None`` instead of raising if not found.
-        """
+    def _find_index(self, task_id: str) -> int | None:
+        """Index of *task_id*, or ``None`` if there is no such task."""
         for i, t in enumerate(self._tasks):
             if t.id == task_id:
                 return i

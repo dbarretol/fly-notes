@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+import threading
 
 import pytest
 
@@ -367,3 +369,83 @@ def test_update_text_is_persisted(temp_tasks_file):
     tm.flush()
 
     assert [t.text for t in TaskManager(tasks_file=temp_tasks_file).tasks] == ["fixed"]
+
+
+# ── Debounced saving through an injected scheduler (#19) ──
+
+
+class FakeScheduler:
+    """Records scheduled callbacks; the test decides when they run."""
+
+    def __init__(self):
+        self.pending = {}
+        self.cancelled = []
+        self._next = 0
+
+    def schedule(self, delay_ms, callback):
+        self._next += 1
+        self.pending[self._next] = (delay_ms, callback)
+        return self._next
+
+    def cancel(self, handle):
+        self.cancelled.append(handle)
+        self.pending.pop(handle, None)
+
+    def run_all(self):
+        for handle in list(self.pending):
+            _, callback = self.pending.pop(handle)
+            callback()
+
+
+def _saved_texts(path):
+    with open(path, encoding="utf-8") as fh:
+        return [t["text"] for t in json.load(fh)]
+
+
+def test_changes_schedule_one_debounced_save(temp_tasks_file):
+    scheduler = FakeScheduler()
+    tm = TaskManager(tasks_file=temp_tasks_file, scheduler=scheduler)
+
+    tm.add_task("a")
+    tm.add_task("b")
+    tm.toggle_task(tm.tasks[0].id)
+
+    # Each change replaces the pending save, so a burst of edits is one write.
+    assert len(scheduler.pending) == 1
+    assert scheduler.cancelled == [1, 2]
+    [(delay_ms, _)] = scheduler.pending.values()
+    assert delay_ms == TaskManager.SAVE_DELAY_MS
+    assert not os.path.exists(temp_tasks_file)
+
+    scheduler.run_all()
+    assert _saved_texts(temp_tasks_file) == ["a", "b"]
+
+
+def test_flush_cancels_the_pending_save_and_writes_now(temp_tasks_file):
+    scheduler = FakeScheduler()
+    tm = TaskManager(tasks_file=temp_tasks_file, scheduler=scheduler)
+    tm.add_task("a")
+
+    tm.flush()
+
+    assert scheduler.pending == {}
+    assert _saved_texts(temp_tasks_file) == ["a"]
+    tm.flush()  # nothing pending: no cancel of a stale handle
+    assert scheduler.cancelled == [1]
+
+
+def test_without_a_scheduler_only_flush_writes(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    tm.add_task("a")
+    assert not os.path.exists(temp_tasks_file)
+    tm.flush()
+    assert _saved_texts(temp_tasks_file) == ["a"]
+
+
+def test_task_manager_starts_no_threads(temp_tasks_file):
+    before = threading.active_count()
+    tm = TaskManager(tasks_file=temp_tasks_file, scheduler=FakeScheduler())
+    tm.add_task("a")
+    tm.delete_task(tm.tasks[0].id)
+    tm.undo()
+    assert threading.active_count() == before

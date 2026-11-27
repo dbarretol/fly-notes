@@ -1472,7 +1472,7 @@ def test_closing_from_taskbar_flushes_pending_save(app_window, tmp_path, monkeyp
     monkeypatch.setitem(config._attr_cache, "tasks_file", str(tasks_file))
     app_root = app_window
     app = FlyNotesApp(app_root)
-    app.manager.SAVE_DELAY = 60  # make sure only the close path can write
+    app.manager.SAVE_DELAY_MS = 60_000  # make sure only the close path can write
     app.manager.add_task("written just before closing")
     assert not tasks_file.exists()
 
@@ -1480,3 +1480,41 @@ def test_closing_from_taskbar_flushes_pending_save(app_window, tmp_path, monkeyp
 
     saved = json.loads(tasks_file.read_text(encoding="utf-8"))
     assert [t["text"] for t in saved] == ["written just before closing"]
+
+
+# ── Saves scheduled with Tk's after() (#19) ──
+
+
+def test_app_saves_through_tk_after_on_the_main_thread(app_window, tmp_path, monkeypatch):
+    import threading
+
+    tasks_file = tmp_path / "tasks.json"
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tasks_file))
+    app = FlyNotesApp(app_window)
+    app.manager.SAVE_DELAY_MS = 10
+    threads_before = threading.active_count()
+
+    app.manager.add_task("saved by after()")
+    assert threading.active_count() == threads_before  # no timer thread
+    assert not tasks_file.exists()
+
+    deadline = time.monotonic() + 5
+    while not tasks_file.exists() and time.monotonic() < deadline:
+        app_window.update()
+        time.sleep(0.01)
+
+    saved = json.loads(tasks_file.read_text(encoding="utf-8"))
+    assert [t["text"] for t in saved] == ["saved by after()"]
+
+
+def test_tk_scheduler_cancel_survives_a_destroyed_window(root):
+    from fly_notes.ui.app import TkScheduler
+
+    win = tk.Toplevel(root)
+    scheduler = TkScheduler(win)
+    fired = []
+    handle = scheduler.schedule(10_000, lambda: fired.append(True))
+    scheduler.cancel(handle)
+    win.destroy()
+    scheduler.cancel(handle)  # e.g. the atexit flush after the window closed
+    assert fired == []

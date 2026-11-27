@@ -268,7 +268,8 @@ flowchart TD
 ### Saving and recovery
 
 Every change schedules a save half a second later, so a burst of edits becomes one write.
-Closing the app saves immediately.
+Closing the app saves immediately. The save is scheduled with Tk's `after()`, so it runs on
+the UI thread: there are no background threads or locks.
 
 ```mermaid
 flowchart LR
