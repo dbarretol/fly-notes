@@ -394,11 +394,12 @@ fly-notes/
 │       ├── window_state.py    # state.json: geometry, always on top, monitor checks
 │       └── single_instance.py # One running copy per tasks file (Windows named mutex)
 ├── tests/                     # pytest suite, one file per module; shared fixtures in conftest.py
-├── assets/                    # Window icon
+├── assets/                    # App icon (window, taskbar and .exe)
 ├── docs/images/               # README screenshot
 ├── AGENTS.md                  # Notes for coding agents and contributors
 ├── .github/                   # CI and release workflows, Dependabot, PR template
 ├── scripts/release_notes.py   # Release notes from CHANGELOG.md (used by the release workflow)
+├── scripts/make_icon.ps1      # Draws assets/fly_notes.ico (16–256 px)
 ├── FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
 ├── LICENSE
