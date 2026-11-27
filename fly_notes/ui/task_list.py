@@ -166,11 +166,7 @@ class TaskListView(tk.Frame):
             self._task_widgets.append(widget)
         else:
             self._task_widgets.insert(index, widget)
-        # Propagate scroll events
-        for child in (widget, widget.card_canvas, widget.label, widget.check, widget.delete_btn):
-            child.bind("<MouseWheel>", self._on_mousewheel)
-            child.bind("<Button-4>", self._on_mousewheel)
-            child.bind("<Button-5>", self._on_mousewheel)
+        widget.bind_scroll(self._on_mousewheel)
 
     def remove_widget(self, widget: TaskItem) -> None:
         if widget in self._task_widgets:
