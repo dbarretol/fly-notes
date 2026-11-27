@@ -103,8 +103,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "shortcuts": {
         "new_task": "<Control-n>",
         "delete_completed": "<Control-d>",
-        "close": "<Escape>",
-        "focus_entry": "<Control-l>",
+        # Not <Escape>: Escape means "cancel" (it clears the entry), never "quit".
+        "close": "<Control-w>",
     },
     "strings": {
         "app_title": "Fly Notes",
