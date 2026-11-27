@@ -8,7 +8,8 @@ runtime dependencies.
 - Use [uv](https://docs.astral.sh/uv/) as the package and virtual environment manager.
 - Run the app: `uv run fly-notes`
 - Lint and format: `uv run ruff check .` and `uv run ruff format .` (line length 100)
-- Tests: `uv run pytest`
+- Tests: `uv run pytest` (`-m "not gui"` skips the ones that open Tk windows). One test file per
+  module; shared fixtures (`cfg`, `root`, `app_window`) live in `tests/conftest.py`.
 - Build the executable: `uv run pyinstaller FlyNotes.spec --clean`
 
 ## Conventions
