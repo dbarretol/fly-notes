@@ -60,7 +60,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "transparency": {
         "active": 1.0,
-        "inactive": 0.45,
+        "inactive": 0.75,
     },
     "spacing": {
         "xs": 2,
@@ -86,6 +86,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "animation_ms": 150,
         "confirm_delete": False,
         "undo_timeout_ms": 5000,
+        # Starting value only: the header pin (or Ctrl+T) choice is remembered in state.json.
+        "always_on_top": True,
+        # Wait this long after the window loses focus before fading it.
+        "inactive_fade_delay_ms": 800,
         "max_visible_tasks": 100,
         "checkbox_size": 18,
         "group_completed": True,
@@ -109,6 +113,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "undo": "<Control-z>",
         # Edits the task under the mouse pointer (or the one with keyboard focus).
         "edit_task": "<F2>",
+        "toggle_always_on_top": "<Control-t>",
     },
     "strings": {
         "app_title": "Fly Notes",
@@ -128,6 +133,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "badge_format": "{done} of {total} done",
         "btn_close": "✕",
         "btn_minimize": "—",
+        # Header pin: filled while the window stays on top, outlined when it doesn't.
+        "btn_pin_on": "▲",
+        "btn_pin_off": "△",
     },
 }
 
@@ -281,13 +289,14 @@ def _validate_settings(settings: dict[str, Any]) -> None:
         "separator_height",
         "scrollbar_width",
         "undo_timeout_ms",
+        "inactive_fade_delay_ms",
     )
     for key in int_keys:
         val = settings.get(key)
         if val is not None and (not isinstance(val, int) or val < 0):
             raise ValueError(f"settings.{key}: must be a positive int, got {val!r}")
 
-    bool_keys = ("confirm_delete", "group_completed")
+    bool_keys = ("confirm_delete", "group_completed", "always_on_top")
     for key in bool_keys:
         val = settings.get(key)
         if val is not None and not isinstance(val, bool):

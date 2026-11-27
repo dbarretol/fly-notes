@@ -1,10 +1,10 @@
 """
-Remembered window geometry — no Tkinter dependency.
+Remembered window state — no Tkinter dependency.
 
-The window's size and position are stored in ``state.json`` next to the
-tasks file when the app closes, and restored on the next start unless the
-saved spot is no longer reachable on any connected monitor (e.g. a laptop
-undocked from an external screen).
+The window's size and position, and whether it stays on top, are stored in
+``state.json`` next to the tasks file when the app closes. The geometry is
+restored on the next start unless the saved spot is no longer reachable on
+any connected monitor (e.g. a laptop undocked from an external screen).
 """
 
 from __future__ import annotations
@@ -87,20 +87,36 @@ def load_geometry(path: str) -> WindowGeometry | None:
 
 def save_geometry(path: str, geometry: WindowGeometry) -> None:
     """Write *geometry* atomically, keeping any other keys already in the file."""
-    data: dict[str, Any] = {}
+    _update_state(
+        path,
+        "window",
+        {"width": geometry.width, "height": geometry.height, "x": geometry.x, "y": geometry.y},
+    )
+
+
+def load_always_on_top(path: str) -> bool | None:
+    """The saved always-on-top choice, or ``None`` if absent or invalid."""
+    value = _read_state(path).get("always_on_top")
+    return value if isinstance(value, bool) else None
+
+
+def save_always_on_top(path: str, always_on_top: bool) -> None:
+    """Write the always-on-top choice, keeping any other keys already in the file."""
+    _update_state(path, "always_on_top", bool(always_on_top))
+
+
+def _read_state(path: str) -> dict[str, Any]:
     try:
         with open(path, encoding="utf-8") as fh:
-            existing = json.load(fh)
-        if isinstance(existing, dict):
-            data = existing
+            data = json.load(fh)
     except (OSError, ValueError):
-        pass
-    data["window"] = {
-        "width": geometry.width,
-        "height": geometry.height,
-        "x": geometry.x,
-        "y": geometry.y,
-    }
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _update_state(path: str, key: str, value: Any) -> None:
+    data = _read_state(path)
+    data[key] = value
 
     dir_name = os.path.dirname(path) or "."
     os.makedirs(dir_name, exist_ok=True)
