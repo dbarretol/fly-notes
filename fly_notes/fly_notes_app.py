@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import messagebox
 from typing import Any
 
@@ -17,8 +18,22 @@ from .config import blend_alpha_hex, config
 from .task_item import TaskItem
 from .task_manager import TaskManager
 from .window_controller import WindowController
+from .window_state import (
+    Rect,
+    WindowGeometry,
+    choose_geometry,
+    load_always_on_top,
+    load_geometry,
+    monitor_work_areas,
+    save_always_on_top,
+    save_geometry,
+    state_file_for,
+)
 
 logger = logging.getLogger(__name__)
+
+# How often the running instance checks whether a second launch asked it to show.
+_ACTIVATION_POLL_MS = 300
 
 # ─────────────────────────────────────────────
 # Sub-components extracted from the monolithic class
@@ -62,13 +77,15 @@ def compute_reorder_target(
 
 
 class HeaderBar(tk.Frame):
-    """Title bar with drag, minimize, and close buttons."""
+    """Title bar with drag, always-on-top pin, minimize, and close buttons."""
 
     def __init__(
         self,
         master: tk.Widget,
         on_close: callable,
         on_minimize: callable,
+        on_toggle_pin: Callable[[], None] | None = None,
+        pinned: bool = True,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -129,6 +146,33 @@ class HeaderBar(tk.Frame):
         self._min_btn.pack(side="right", fill="y")
         self._min_btn.bind("<Enter>", lambda e: self._min_btn.config(bg=config.btn_header_hover_bg))
         self._min_btn.bind("<Leave>", lambda e: self._min_btn.config(bg=config.header_bg))
+
+        # Always-on-top pin
+        self._pin_btn = tk.Button(
+            self,
+            command=on_toggle_pin,
+            bg=config.header_bg,
+            fg=config.text_on_header,
+            bd=0,
+            activebackground=config.btn_header_hover_bg,
+            activeforeground="#FFFFFF",
+            padx=config.spacing_md,
+            font=config.font_header,
+            cursor="hand2",
+            relief="flat",
+        )
+        self._pin_btn.pack(side="right", fill="y")
+        self._pin_btn.bind("<Enter>", lambda e: self._pin_btn.config(bg=config.btn_header_hover_bg))
+        self._pin_btn.bind("<Leave>", lambda e: self._pin_btn.config(bg=config.header_bg))
+        self.set_pinned(pinned)
+
+    def set_pinned(self, pinned: bool) -> None:
+        """Show whether the window currently stays on top."""
+        self._pin_btn.config(text=config.string("btn_pin_on" if pinned else "btn_pin_off"))
+
+    @property
+    def pin_text(self) -> str:
+        return self._pin_btn.cget("text")
 
     @property
     def draggable_widgets(self) -> list[tk.Widget]:
@@ -223,12 +267,13 @@ class TaskEntryBar(tk.Frame):
 
 
 class FooterBar(tk.Frame):
-    """Status badge and 'clear completed' link."""
+    """Status badge, 'clear completed' link and the temporary undo notice."""
 
     def __init__(
         self,
         master: tk.Widget,
-        on_clear: callable,
+        on_clear: Callable[[], None],
+        on_undo: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -241,6 +286,8 @@ class FooterBar(tk.Frame):
         )
         self.pack_propagate(False)
         self._on_clear = on_clear
+        self._on_undo = on_undo
+        self._undo_after_id: str | None = None
 
         self._badge_label = tk.Label(
             self,
@@ -262,6 +309,58 @@ class FooterBar(tk.Frame):
         self._clear_btn.bind("<Button-1>", lambda _: self._on_clear())
         self._clear_btn.bind("<Enter>", self._on_hover)
         self._clear_btn.bind("<Leave>", self._on_leave)
+
+        # Undo notice: replaces the badge for a few seconds after a deletion.
+        self._undo_frame = tk.Frame(self, bg=config.footer_bg, bd=0, highlightthickness=0)
+        self._undo_msg = tk.Label(
+            self._undo_frame,
+            text="",
+            fg=config.text_secondary,
+            bg=config.footer_bg,
+            font=config.font_badge,
+        )
+        self._undo_msg.pack(side="left")
+        self._undo_btn = tk.Label(
+            self._undo_frame,
+            text=config.string("undo_action"),
+            fg=config.link_color,
+            bg=config.footer_bg,
+            font=(*config.font_footer[:2], "bold"),
+            cursor="hand2",
+        )
+        self._undo_btn.pack(side="left", padx=(config.spacing_sm, 0))
+        self._undo_btn.bind("<Button-1>", lambda _: self._undo_clicked())
+        self._undo_visible = False
+
+    @property
+    def undo_visible(self) -> bool:
+        return self._undo_visible
+
+    def show_undo(self, message: str) -> None:
+        """Show "<message> · Undo" in place of the badge, for ``undo_timeout_ms``."""
+        self._cancel_undo_timer()
+        self._undo_msg.config(text=message)
+        if not self._undo_visible:
+            self._badge_label.pack_forget()
+            self._undo_frame.pack(side="left", padx=config.spacing_lg)
+            self._undo_visible = True
+        self._undo_after_id = self.after(config.undo_timeout_ms, self.hide_undo)
+
+    def hide_undo(self) -> None:
+        self._cancel_undo_timer()
+        if self._undo_visible:
+            self._undo_frame.pack_forget()
+            self._badge_label.pack(side="left", padx=config.spacing_lg)
+            self._undo_visible = False
+
+    def _cancel_undo_timer(self) -> None:
+        if self._undo_after_id is not None:
+            self.after_cancel(self._undo_after_id)
+            self._undo_after_id = None
+
+    def _undo_clicked(self) -> None:
+        if self._on_undo:
+            self._on_undo()
 
     def update_counts(self, total: int, done: int) -> None:
         if total == 0:
@@ -297,6 +396,8 @@ class TaskListView(tk.Frame):
         )
         self._scrollbar_visible = False
         self._task_widgets: list[TaskItem] = []
+        # Rows revealed past max_visible_tasks with "Show N more" (whole pages).
+        self._extra_visible = 0
         # Transient widgets (section headers, separators, spacers)
         self._transient_widgets: list[tk.Widget] = []
 
@@ -361,6 +462,10 @@ class TaskListView(tk.Frame):
             pady=config.spacing_xxl,
         )
 
+        # Rows change height when their text re-wraps (e.g. on resize), so the
+        # scroll region follows the inner frame's size instead of only repack().
+        self._inner.bind("<Configure>", self._on_inner_configure)
+
         # Mousewheel on canvas & inner frame
         for w in (self._canvas, self._inner):
             w.bind("<MouseWheel>", self._on_mousewheel)
@@ -387,21 +492,52 @@ class TaskListView(tk.Frame):
             return pending + completed
         return list(self._task_widgets)
 
-    def swap_widgets(self, widget_a: TaskItem, widget_b: TaskItem) -> None:
-        """Swap the storage order of two widgets already in this view."""
-        i = self._task_widgets.index(widget_a)
-        j = self._task_widgets.index(widget_b)
-        self._task_widgets[i], self._task_widgets[j] = (
-            self._task_widgets[j],
-            self._task_widgets[i],
-        )
+    def sync_order(self, task_ids: list[str]) -> None:
+        """Reorder the insertion-order list to match the model's *task_ids*.
+
+        A reorder moves a task within the model (pop + insert), which with
+        grouping can jump over tasks of the other group; swapping just the
+        two widgets would leave the widget order out of step with the model.
+        """
+        position = {task_id: i for i, task_id in enumerate(task_ids)}
+        self._task_widgets.sort(key=lambda w: position.get(w.task_id, len(position)))
+
+    def packed_order(self) -> list[TaskItem]:
+        """Widgets currently rendered (not hidden by the cap), top to bottom."""
+        return [w for w in self.visual_order() if w.winfo_manager()]
+
+    def ensure_visible(self, widget: TaskItem) -> None:
+        """Scroll just enough for *widget* to be fully inside the viewport."""
+        self._inner.update_idletasks()
+        total = self._inner.winfo_height()
+        view_h = self._canvas.winfo_height()
+        if total <= 0 or view_h <= 1:
+            return
+        top = widget.winfo_y()
+        bottom = top + widget.winfo_height()
+        view_top = int(self._canvas.canvasy(0))
+        # Tk rounds the view origin to the nearest yscrollincrement, so aim at a
+        # multiple of it: down when scrolling up, up when scrolling down.
+        step = max(1, int(self._canvas.cget("yscrollincrement")))
+        if top < view_top:
+            self._canvas.yview_moveto((top // step) * step / total)
+        elif bottom > view_top + view_h:
+            self._canvas.yview_moveto(-(-(bottom - view_h) // step) * step / total)
 
     @property
     def inner_frame(self) -> tk.Frame:
         return self._inner
 
-    def add_widget(self, widget: TaskItem) -> None:
-        self._task_widgets.append(widget)
+    def add_widget(self, widget: TaskItem, index: int | None = None) -> None:
+        """Add *widget* at *index* of the insertion order (the end by default).
+
+        The insertion order mirrors the TaskManager's list, so a restored task
+        is inserted at its model index.
+        """
+        if index is None:
+            self._task_widgets.append(widget)
+        else:
+            self._task_widgets.insert(index, widget)
         # Propagate scroll events
         for child in (widget, widget.card_canvas, widget.label, widget.check, widget.delete_btn):
             child.bind("<MouseWheel>", self._on_mousewheel)
@@ -440,21 +576,8 @@ class TaskListView(tk.Frame):
             self._pack_flat(visible)
 
         if hidden_count:
-            # Deliberately not routed through _make_section_label: this is a
-            # meta hint, not a structural section separator, so it keeps the
-            # plain text_secondary/footer styling rather than the bold
-            # uppercase header treatment (see issues-v4 #4).
-            more_label = tk.Label(
-                self._inner,
-                text=config.string("more_hidden", count=hidden_count),
-                fg=config.text_secondary,
-                bg=config.content_bg,
-                font=config.font_footer,
+            self._make_show_more_link(hidden_count).pack(
                 anchor="w",
-            )
-            self._transient_widgets.append(more_label)
-            more_label.pack(
-                fill="x",
                 padx=config.spacing_xl,
                 pady=(config.spacing_xs, config.spacing_xs),
             )
@@ -473,15 +596,56 @@ class TaskListView(tk.Frame):
 
     # ── Private helpers ──────────────────────
 
+    def show_more(self) -> None:
+        """Reveal the next page (``max_visible_tasks`` rows) of hidden tasks."""
+        self._extra_visible += config.max_visible_tasks
+        self.repack()
+
+    def _make_show_more_link(self, hidden_count: int) -> tk.Label:
+        """The "Show N more" link under the list, for rows past the cap.
+
+        Deliberately not routed through _make_section_label: this is a
+        meta hint, not a structural section separator, so it keeps the
+        plain footer-sized link styling rather than the bold uppercase
+        header treatment (see issues-v4 #4).
+        """
+        page = min(hidden_count, config.max_visible_tasks)
+        if page < hidden_count:
+            text = config.string("more_hidden_paged", count=page, hidden=hidden_count)
+        else:
+            text = config.string("more_hidden", count=page)
+        link = tk.Label(
+            self._inner,
+            text=text,
+            fg=config.link_color,
+            bg=config.content_bg,
+            font=config.font_footer,
+            anchor="w",
+            cursor="hand2",
+            takefocus=True,
+            highlightthickness=1,
+            highlightbackground=config.content_bg,
+            highlightcolor=config.border_focus,
+        )
+        underline = (*config.font_footer[:2], "underline")
+        link.bind("<Button-1>", lambda _: self.show_more())
+        link.bind("<Return>", lambda _: self.show_more())
+        link.bind("<space>", lambda _: self.show_more())
+        link.bind("<Enter>", lambda _: link.config(fg=config.link_hover, font=underline))
+        link.bind("<Leave>", lambda _: link.config(fg=config.link_color, font=config.font_footer))
+        link.bind("<MouseWheel>", self._on_mousewheel)
+        self._transient_widgets.append(link)
+        return link
+
     def _visible_widgets(self) -> tuple[list[TaskItem], int]:
         """Cap the rendered widgets at ``config.max_visible_tasks``.
 
         Applied to the *visual* (post-grouping) order, as one combined
-        cap across both groups. Returns the widgets to render and how
-        many were left out.
+        cap across both groups, plus any pages revealed with "Show N
+        more". Returns the widgets to render and how many were left out.
         """
         visual = self.visual_order()
-        limit = config.max_visible_tasks
+        limit = config.max_visible_tasks + self._extra_visible
         if len(visual) <= limit:
             return visual, 0
         return visual[:limit], len(visual) - limit
@@ -564,19 +728,25 @@ class TaskListView(tk.Frame):
             self._canvas.config(scrollregion=bbox)
         self._sync_scroll_increment()
 
+    def _on_inner_configure(self, event: tk.Event | None = None) -> None:
+        bbox = self._canvas.bbox("all")
+        if bbox:
+            self._canvas.config(scrollregion=bbox)
+        self._sync_scroll_increment()
+
     def _sync_scroll_increment(self) -> None:
-        """Quantize vertical scrolling to whole task rows.
+        """Scroll in steps of one single-line task row.
 
         Tk's canvas constrains the visible y-origin to multiples of
         ``yscrollincrement`` for every scroll source (wheel, scrollbar
-        drag/click) — so once set, a task row can never end up rendered
-        half-visible at the bottom edge; it's always fully shown or fully
-        scrolled past.
+        drag/click). Rows whose text wraps are taller, so the step is the
+        *shortest* row: a wheel notch never jumps past more than one row,
+        and lists of single-line tasks still scroll by exactly one row.
         """
         if not self._task_widgets:
             self._canvas.config(yscrollincrement=1)
             return
-        row_height = self._task_widgets[0].winfo_reqheight() + 2 * config.spacing_xs
+        row_height = min(w.winfo_reqheight() for w in self._task_widgets) + 2 * config.spacing_xs
         self._canvas.config(yscrollincrement=max(1, row_height))
 
     def _scrollbar_set(self, first: str, last: str) -> None:
@@ -619,17 +789,22 @@ class FlyNotesApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(config.string("app_title"))
-        self.root.geometry(f"{config.default_width}x{config.default_height}+100+100")
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
         self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
         self.root.attributes("-alpha", config.active_alpha)
+        self._fade_after_id: str | None = None
+        self._activation_after_id: str | None = None
 
         # Data
         self.manager = TaskManager(
             tasks_file=config.tasks_file,
             error_callback=self._handle_error_threadsafe,
         )
+
+        # Window geometry: last session's size/position, if still on a monitor
+        self._state_file = state_file_for(config.tasks_file)
+        self._initial_geometry = self._restored_geometry()
+        self.root.geometry(self._initial_geometry.to_tk())
 
         # Window controller
         self.window_ctrl = WindowController(
@@ -638,6 +813,11 @@ class FlyNotesApp:
             on_close=self._on_close,
         )
 
+        # Always on top: last session's choice, else the configured default
+        saved_on_top = load_always_on_top(self._state_file)
+        self._always_on_top = config.always_on_top if saved_on_top is None else saved_on_top
+        self._apply_always_on_top()
+
         # Drag state
         self._dragging_item: TaskItem | None = None
         self._drag_start_y: int = 0
@@ -645,6 +825,8 @@ class FlyNotesApp:
         self._build_ui()
         self._bind_events()
         self.window_ctrl.setup_resize_handles(config.content_bg)
+        # The list's canvas starts at default_width; match the restored width.
+        self._on_window_resize(self._initial_geometry.width)
         self._load_initial_tasks()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -657,6 +839,8 @@ class FlyNotesApp:
             self.root,
             on_close=self._on_close,
             on_minimize=self.window_ctrl.minimize_window,
+            on_toggle_pin=self.toggle_always_on_top,
+            pinned=self._always_on_top,
         )
         self._header.pack(fill="x", side="top")
 
@@ -676,7 +860,7 @@ class FlyNotesApp:
             bd=0,
         )
 
-        self._footer = FooterBar(self.root, on_clear=self._clear_completed)
+        self._footer = FooterBar(self.root, on_clear=self._clear_completed, on_undo=self._undo)
 
         # Pack order: footer at bottom, then separator above it
         self._footer.pack(fill="x", side="bottom")
@@ -687,6 +871,8 @@ class FlyNotesApp:
             self.root,
             on_submit=self._add_new_task,
         )
+        # Down from the new-task field jumps into the list.
+        self._entry_bar.entry_widget.bind("<Down>", lambda _: self._focus_first_task())
         self._entry_bar.pack(
             fill="x",
             padx=config.spacing_lg,
@@ -711,20 +897,77 @@ class FlyNotesApp:
         for w in self._header.draggable_widgets:
             self.window_ctrl.bind_drag(w)
 
-        self.root.bind(
-            "<FocusIn>",
-            lambda _: self.root.attributes("-alpha", config.active_alpha),
-        )
-        self.root.bind(
-            "<FocusOut>",
-            lambda _: self.root.attributes("-alpha", config.inactive_alpha),
-        )
-        self.root.bind("<Map>", lambda _: self.root.attributes("-topmost", True))
+        self.root.bind("<FocusIn>", self._on_app_focus_in)
+        self.root.bind("<FocusOut>", self._on_app_focus_out)
+        self.root.bind("<Map>", lambda _: self._apply_always_on_top())
 
         # Shortcuts
         self.root.bind(config.shortcut_close, lambda _: self._on_close())
         self.root.bind(config.shortcut_new_task, lambda _: self._entry_bar.focus_entry())
         self.root.bind(config.shortcut_delete_completed, lambda _: self._clear_completed())
+        self.root.bind(config.shortcut_undo, lambda _: self._undo())
+        self.root.bind(config.shortcut_edit_task, lambda _: self._edit_current_task())
+        self.root.bind(config.shortcut_toggle_always_on_top, lambda _: self.toggle_always_on_top())
+
+    # ── Single instance ──────────────────────
+
+    def listen_for_activation(self, show_requested: Callable[[], bool]) -> None:
+        """Poll *show_requested* and come to the front whenever it returns True.
+
+        A second launch of the app signals the running one this way (see
+        ``single_instance``) instead of opening a competing copy.
+        """
+        self._show_requested = show_requested
+        self._poll_activation()
+
+    def _poll_activation(self) -> None:
+        self._activation_after_id = None
+        try:
+            if self._show_requested():
+                self.window_ctrl.bring_to_front()
+        except Exception:
+            logger.exception("Could not handle a request to show the window")
+        self._activation_after_id = self.root.after(_ACTIVATION_POLL_MS, self._poll_activation)
+
+    # ── Always on top / inactive fade ────────
+
+    @property
+    def always_on_top(self) -> bool:
+        return self._always_on_top
+
+    def toggle_always_on_top(self) -> None:
+        """Header pin / Ctrl+T: switch between staying on top and a normal window."""
+        self._always_on_top = not self._always_on_top
+        self._apply_always_on_top()
+        self._header.set_pinned(self._always_on_top)
+
+    def _apply_always_on_top(self) -> None:
+        self.window_ctrl.always_on_top = self._always_on_top
+        self.root.attributes("-topmost", self._always_on_top)
+
+    def _on_app_focus_in(self, _event: tk.Event | None = None) -> None:
+        self._cancel_fade()
+        self.root.attributes("-alpha", config.active_alpha)
+
+    def _on_app_focus_out(self, _event: tk.Event | None = None) -> None:
+        # Focus moving between our own widgets also sends FocusOut (then FocusIn), and a
+        # quick click elsewhere shouldn't flash the window: fade only if focus stays away.
+        self._cancel_fade()
+        self._fade_after_id = self.root.after(config.inactive_fade_delay_ms, self._fade_if_inactive)
+
+    def _fade_if_inactive(self) -> None:
+        self._fade_after_id = None
+        try:
+            focused = self.root.focus_get()
+        except (KeyError, tk.TclError):
+            focused = None
+        if focused is None:
+            self.root.attributes("-alpha", config.inactive_alpha)
+
+    def _cancel_fade(self) -> None:
+        if self._fade_after_id is not None:
+            self.root.after_cancel(self._fade_after_id)
+            self._fade_after_id = None
 
     # ── Task CRUD ────────────────────────────
 
@@ -733,7 +976,7 @@ class FlyNotesApp:
         self._create_task_widget(task)
         self._refresh_ui()
 
-    def _create_task_widget(self, task: dict[str, Any]) -> TaskItem:
+    def _create_task_widget(self, task: dict[str, Any], index: int | None = None) -> TaskItem:
         widget = TaskItem(
             self._task_list.inner_frame,
             task_id=task["id"],
@@ -744,8 +987,11 @@ class FlyNotesApp:
             on_drag_start=self._start_reorder,
             on_drag_do=self._do_reorder,
             on_drag_stop=self._stop_reorder,
+            on_text_change=self._change_task_text,
+            on_navigate=self._navigate_from,
+            on_move=self._move_task,
         )
-        self._task_list.add_widget(widget)
+        self._task_list.add_widget(widget, index=index)
         return widget
 
     def _delete_task(self, item: TaskItem) -> None:
@@ -756,28 +1002,115 @@ class FlyNotesApp:
             )
             if not ok:
                 return
-        self.manager.delete_task(item.task_id)
+        # Keyboard users keep their place: focus moves to the next row (or the previous one).
+        had_focus = item.has_focus
+        next_focus = self._neighbour(item) if had_focus else None
+        if self.manager.delete_task(item.task_id) is None:
+            return
         self._task_list.remove_widget(item)
         self._refresh_ui()
+        self._footer.show_undo(config.string("undo_deleted"))
+        if next_focus is not None:
+            self._focus_task(next_focus)
+        elif had_focus:
+            self._entry_bar.focus_entry()
+
+    # ── Keyboard navigation ──────────────────
+
+    def _neighbour(self, item: TaskItem) -> TaskItem | None:
+        rows = self._task_list.packed_order()
+        if item not in rows:
+            return None
+        i = rows.index(item)
+        if i + 1 < len(rows):
+            return rows[i + 1]
+        return rows[i - 1] if i > 0 else None
+
+    def _focus_task(self, item: TaskItem) -> None:
+        item.focus_row()
+        self._task_list.ensure_visible(item)
+
+    def _focus_first_task(self) -> str | None:
+        rows = self._task_list.packed_order()
+        if not rows:
+            return None
+        self._focus_task(rows[0])
+        return "break"
+
+    def _navigate_from(self, item: TaskItem, delta: int) -> None:
+        """Up/Down on a row: focus the adjacent row; Up from the first goes to the entry."""
+        rows = self._task_list.packed_order()
+        if item not in rows:
+            return
+        target = rows.index(item) + delta
+        if target < 0:
+            self._entry_bar.focus_entry()
+        elif target < len(rows):
+            self._focus_task(rows[target])
+
+    def _move_task(self, item: TaskItem, delta: int) -> None:
+        """Alt+Up/Down: swap with the adjacent task, staying inside its group."""
+        visual = self._task_list.visual_order()
+        target_pos = visual.index(item) + delta
+        if not 0 <= target_pos < len(visual):
+            return
+        target = visual[target_pos]
+        if config.group_completed and target.completed_var.get() != item.completed_var.get():
+            return
+        if self._reorder(item, target):
+            self._focus_task(item)
+
+    def _reorder(self, item: TaskItem, target: TaskItem) -> bool:
+        """Move *item* to *target*'s place in the model and re-sync the widgets."""
+        try:
+            model_idx = self.manager.index_of(item.task_id)
+            target_model_idx = self.manager.index_of(target.task_id)
+        except ValueError:
+            return False
+        if not self.manager.reorder_tasks(model_idx, target_model_idx):
+            return False
+        self._task_list.sync_order([t["id"] for t in self.manager.tasks])
+        self._task_list.repack()
+        return True
+
+    def _change_task_text(self, item: TaskItem, text: str) -> str | None:
+        """Save an inline edit; return the stored text, or None to keep the old one."""
+        task = self.manager.update_text(item.task_id, text, max_length=config.max_task_length)
+        return task["text"] if task else None
+
+    def _edit_current_task(self) -> None:
+        """F2: edit the task with keyboard focus, else the one under the pointer."""
+        focused = self.root.focus_get()
+        widgets = self._task_list.task_widgets
+        target = next((w for w in widgets if w.contains(focused)), None) or next(
+            (w for w in widgets if w.is_hovered), None
+        )
+        if target is not None and target.winfo_ismapped():
+            target.begin_edit()
 
     def _toggle_task(self, item: TaskItem) -> None:
         self.manager.toggle_task(item.task_id)
         self._refresh_ui()
 
     def _clear_completed(self) -> None:
-        count = self.manager.completed_count
+        # No confirmation dialog: the clear can be undone from the footer or Ctrl+Z.
+        count = self.manager.clear_completed()
         if count == 0:
             return
-        ok = messagebox.askyesno(
-            config.string("confirm_clear_title"),
-            config.string("confirm_clear_msg", count=count),
-        )
-        if not ok:
-            return
-        self.manager.clear_completed()
         to_remove = [w for w in self._task_list.task_widgets if w.completed_var.get()]
         for w in to_remove:
             self._task_list.remove_widget(w)
+        self._refresh_ui()
+        self._footer.show_undo(config.string("undo_cleared", count=count))
+
+    def _undo(self) -> None:
+        """Bring back the most recently deleted or cleared task(s) in place."""
+        restored = self.manager.undo()
+        self._footer.hide_undo()
+        if not restored:
+            return
+        for task in restored:
+            self._create_task_widget(task, index=self.manager.index_of(task["id"]))
         self._refresh_ui()
 
     # ── Drag-and-drop (model-safe) ───────────
@@ -813,16 +1146,8 @@ class FlyNotesApp:
 
         target_widget = next(w for w in visual if w.task_id == target_id)
 
-        # Resolve model indices via task_id — safe regardless of grouping
-        try:
-            model_idx = self.manager.index_of(item.task_id)
-            target_model_idx = self.manager.index_of(target_id)
-        except ValueError:
-            return
-
-        if self.manager.reorder_tasks(model_idx, target_model_idx):
-            self._task_list.swap_widgets(item, target_widget)
-            self._task_list.repack()
+        # Model indices are resolved via task_id — safe regardless of grouping
+        if self._reorder(item, target_widget):
             self._drag_start_y = event.y_root
 
     # ── UI State ─────────────────────────────
@@ -847,10 +1172,40 @@ class FlyNotesApp:
         """Schedule error dialog on the main Tkinter thread."""
         self.root.after(0, lambda: messagebox.showerror(config.string("app_title"), message))
 
+    def _restored_geometry(self) -> WindowGeometry:
+        default = WindowGeometry(config.default_width, config.default_height, 100, 100)
+        monitors = monitor_work_areas() or [
+            Rect(0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+        ]
+        return choose_geometry(
+            load_geometry(self._state_file),
+            default,
+            monitors,
+            min_width=config.min_width,
+            min_height=config.min_height,
+        )
+
+    def _save_window_geometry(self) -> None:
+        try:
+            # wm geometry keeps the last size/position even while minimized (withdrawn).
+            geometry = WindowGeometry.from_tk(self.root.wm_geometry())
+            save_geometry(self._state_file, geometry)
+        except Exception:
+            logger.exception("Could not save the window position")
+        try:
+            save_always_on_top(self._state_file, self._always_on_top)
+        except Exception:
+            logger.exception("Could not save the always-on-top setting")
+
     def _on_close(self) -> None:
+        self._cancel_fade()
+        if self._activation_after_id is not None:
+            self.root.after_cancel(self._activation_after_id)
+            self._activation_after_id = None
         try:
             self.manager.flush()
         except Exception:
             # Closing must still succeed, but a failed final save must not be silent.
             logger.exception("Could not save tasks while closing")
+        self._save_window_geometry()
         self.root.destroy()

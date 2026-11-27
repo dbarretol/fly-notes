@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 Task = dict[str, Any]
 
 _MAX_TEXT_LENGTH = 10_000  # Hard safety limit for loaded task text
+_UNDO_LIMIT = 20  # Deletions remembered for undo (each "clear completed" counts as one)
 
 
 class TaskManager:
@@ -50,6 +51,9 @@ class TaskManager:
         # Set when an unreadable tasks file could not be moved aside: saving
         # would overwrite the user's only copy, so writes are refused instead.
         self._saves_blocked = False
+        # Each entry is one undoable removal: the removed tasks with the index
+        # each one had in the list before it was removed, in ascending order.
+        self._undo_stack: list[list[tuple[int, Task]]] = []
         self._load_tasks()
 
     @property
@@ -120,6 +124,7 @@ class TaskManager:
                 logger.warning("delete_task: id '%s' not found", task_id)
                 return None
             removed = self._tasks.pop(idx)
+            self._push_undo([(idx, removed)])
         self._schedule_save()
         logger.info("Task deleted: %s", task_id)
         return removed
@@ -135,6 +140,31 @@ class TaskManager:
         logger.info("Task toggled: %s → %s", task_id, result["completed"])
         return result
 
+    def update_text(self, task_id: str, text: str, max_length: int | None = None) -> Task | None:
+        """Replace a task's text; return the updated task, or ``None`` if nothing changed.
+
+        *text* is stripped and cut to *max_length* (the UI passes the same
+        ``max_task_length`` used for new tasks). Empty text is rejected, so an
+        edit can never blank a task out.
+        """
+        clean = text.strip()
+        limit = _MAX_TEXT_LENGTH if max_length is None else min(max_length, _MAX_TEXT_LENGTH)
+        clean = clean[:limit].rstrip()
+        if not clean:
+            return None
+        with self._lock:
+            idx = self._index_of_unlocked(task_id)
+            if idx is None:
+                logger.warning("update_text: id '%s' not found", task_id)
+                return None
+            if self._tasks[idx]["text"] == clean:
+                return None
+            self._tasks[idx]["text"] = clean
+            result = dict(self._tasks[idx])
+        self._schedule_save()
+        logger.info("Task edited: %s", task_id)
+        return result
+
     def reorder_tasks(self, old_idx: int, new_idx: int) -> bool:
         with self._lock:
             if not (0 <= old_idx < len(self._tasks) and 0 <= new_idx < len(self._tasks)):
@@ -146,12 +176,49 @@ class TaskManager:
 
     def clear_completed(self) -> int:
         with self._lock:
-            before = len(self._tasks)
+            cleared = [(i, t) for i, t in enumerate(self._tasks) if t["completed"]]
             self._tasks = [t for t in self._tasks if not t["completed"]]
-            removed = before - len(self._tasks)
+            removed = len(cleared)
+            if cleared:
+                self._push_undo(cleared)
         self._schedule_save()
         logger.info("Cleared %d completed task(s)", removed)
         return removed
+
+    # ── Undo ─────────────────────────────────
+
+    @property
+    def can_undo(self) -> bool:
+        with self._lock:
+            return bool(self._undo_stack)
+
+    def undo(self) -> list[Task]:
+        """Restore the most recent deletion (or "clear completed") in place.
+
+        Each task goes back to the index it had before it was removed (or
+        the end of the list, if the list has since become shorter). Returns
+        copies of the restored tasks in list order; empty if nothing to undo.
+        """
+        with self._lock:
+            if not self._undo_stack:
+                return []
+            entry = self._undo_stack.pop()
+            present = {t["id"] for t in self._tasks}
+            restored: list[Task] = []
+            for idx, task in entry:
+                if task["id"] in present:
+                    continue
+                self._tasks.insert(min(idx, len(self._tasks)), task)
+                restored.append(dict(task))
+        if restored:
+            self._schedule_save()
+        logger.info("Undo restored %d task(s)", len(restored))
+        return restored
+
+    def _push_undo(self, entry: list[tuple[int, Task]]) -> None:
+        """Remember a removal. Must be called while ``self._lock`` is held."""
+        self._undo_stack.append(entry)
+        del self._undo_stack[:-_UNDO_LIMIT]
 
     # ── Persistence ──────────────────────────
 

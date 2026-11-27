@@ -4,6 +4,8 @@ Self-contained task-row widget with:
 * Hover-reveal delete button
 * Distinct completed vs pending visual states
 * Keyboard-accessible delete
+* Inline text editing (double-click or F2)
+* Keyboard focus with a visible focus ring (arrows, Space, Delete, Alt+arrows)
 * Drag-and-drop callbacks
 """
 
@@ -13,6 +15,9 @@ import tkinter as tk
 from collections.abc import Callable
 
 from .config import blend_alpha_hex, config
+
+# Never wrap narrower than this, so a tiny window doesn't stack one word per line.
+_MIN_WRAP_WIDTH = 60
 
 
 def draw_rounded_rect(
@@ -233,6 +238,27 @@ class CustomCheckbox(tk.Canvas):
         self.config(bg=color)
 
 
+class _BoolValue:
+    """``get()``/``set()`` holder with the same interface as ``tk.BooleanVar``.
+
+    No widget is bound to the completed flag, so a Tcl variable isn't needed;
+    a ``BooleanVar`` also breaks when it is garbage-collected off the main
+    thread (e.g. during the save timer), which logs "main thread is not in
+    main loop" from its ``__del__``.
+    """
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: bool = False) -> None:
+        self._value = bool(value)
+
+    def get(self) -> bool:
+        return self._value
+
+    def set(self, value: bool) -> None:
+        self._value = bool(value)
+
+
 class TaskItem(tk.Frame):
     """One task row: custom checkbox │ label │ delete button.
 
@@ -251,6 +277,9 @@ class TaskItem(tk.Frame):
         on_drag_start: Callable[[TaskItem, tk.Event], None] | None = None,
         on_drag_do: Callable[[TaskItem, tk.Event], None] | None = None,
         on_drag_stop: Callable[[TaskItem, tk.Event], None] | None = None,
+        on_text_change: Callable[[TaskItem, str], str | None] | None = None,
+        on_navigate: Callable[[TaskItem, int], None] | None = None,
+        on_move: Callable[[TaskItem, int], None] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -271,12 +300,16 @@ class TaskItem(tk.Frame):
         self._on_drag_start = on_drag_start
         self._on_drag_do = on_drag_do
         self._on_drag_stop = on_drag_stop
+        self._on_text_change = on_text_change
+        self._on_navigate = on_navigate
+        self._on_move = on_move
 
         # State
-        self.completed_var = tk.BooleanVar(value=completed)
+        self.completed_var = _BoolValue(completed)
         self._is_hovered = False
         self._is_dragging = False
         self._drag_active = False
+        self._has_focus = False
         self._card_fill = config.item_bg_completed if completed else config.item_bg
         self._radius = config.border_radius
         self._shadow_px = 2
@@ -286,11 +319,13 @@ class TaskItem(tk.Frame):
         # visible "card" is drawn on a Canvas behind a content Frame that
         # is inset by _radius — the drawn corners are never covered by the
         # (square-cornered) content frame sitting on top of them.
+        # The card canvas is also the row's keyboard focus target (Tab/arrows).
         self.card_canvas = tk.Canvas(
             self,
             bg=config.content_bg,
             highlightthickness=0,
             bd=0,
+            takefocus=1,
         )
         self.card_canvas.pack(fill="both", expand=True)
         self.card_canvas.bind("<Configure>", self._on_canvas_configure)
@@ -329,8 +364,13 @@ class TaskItem(tk.Frame):
             bg=self._card_fill,
             font=config.font_body,
             anchor="w",
+            justify="left",
         )
         self.label.pack(side="left", fill="x", expand=True)
+        # Set from the row's real width in ``_on_canvas_configure``; 0 = no wrap.
+        self._wrap_width = 0
+        # Inline editor, only while editing (see begin_edit).
+        self._editor: tk.Entry | None = None
 
         # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
@@ -361,10 +401,9 @@ class TaskItem(tk.Frame):
     def _init_card_size(self) -> None:
         """Give the card canvas an initial size before its first <Configure>.
 
-        Height is fixed for the row's lifetime (content doesn't grow/shrink
-        vertically); width is a placeholder immediately superseded once the
-        parent's geometry manager allocates the row's real width and fires
-        <Configure> (handled by ``_on_canvas_configure``).
+        Both values are placeholders: once the parent's geometry manager
+        allocates the row's real width, ``_on_canvas_configure`` wraps the
+        label to it and resizes the card to the wrapped text's height.
         """
         self._content.update_idletasks()
         content_w = self._content.winfo_reqwidth()
@@ -394,6 +433,137 @@ class TaskItem(tk.Frame):
     def _bind_keyboard(self) -> None:
         self.delete_btn.bind("<Return>", lambda e: self._handle_delete())
         self.delete_btn.bind("<space>", lambda e: self._handle_delete())
+        self.label.bind("<Double-Button-1>", lambda e: self.begin_edit())
+
+        c = self.card_canvas
+        c.bind("<FocusIn>", self._on_focus_in)
+        c.bind("<FocusOut>", self._on_focus_out)
+        c.bind("<Up>", lambda e: self._navigate(-1))
+        c.bind("<Down>", lambda e: self._navigate(1))
+        c.bind("<Alt-Up>", lambda e: self._move(-1))
+        c.bind("<Alt-Down>", lambda e: self._move(1))
+        c.bind("<space>", self._key_toggle)
+        c.bind("<Delete>", self._key_delete)
+        c.bind("<F2>", self._key_edit)
+        c.bind("<Return>", self._key_edit)
+
+    # ── Keyboard focus ───────────────────────
+
+    @property
+    def has_focus(self) -> bool:
+        return self._has_focus
+
+    def focus_row(self) -> None:
+        """Give this row keyboard focus (shows the focus ring)."""
+        self.card_canvas.focus_set()
+
+    def toggle(self) -> None:
+        """Flip completed, exactly like clicking the checkbox."""
+        self.check.checked = not self.check.checked
+        self._handle_status_change()
+
+    def _on_focus_in(self, event: tk.Event | None = None) -> None:
+        self._has_focus = True
+        self._redraw_card()
+
+    def _on_focus_out(self, event: tk.Event | None = None) -> None:
+        self._has_focus = False
+        self._redraw_card()
+
+    def _navigate(self, delta: int) -> str:
+        if self._on_navigate:
+            self._on_navigate(self, delta)
+        return "break"
+
+    def _move(self, delta: int) -> str:
+        if self._on_move:
+            self._on_move(self, delta)
+        return "break"
+
+    def _key_toggle(self, event: tk.Event | None = None) -> str:
+        self.toggle()
+        return "break"
+
+    def _key_delete(self, event: tk.Event | None = None) -> str:
+        self._handle_delete()
+        return "break"
+
+    def _key_edit(self, event: tk.Event | None = None) -> str:
+        self.begin_edit()
+        return "break"
+
+    # ── Inline edit ──────────────────────────
+
+    @property
+    def is_editing(self) -> bool:
+        return self._editor is not None
+
+    def begin_edit(self) -> None:
+        """Swap the label for an Entry holding the task text, selected and focused."""
+        if self._editor is not None:
+            return
+        self._is_dragging = False
+        editor = tk.Entry(
+            self._content,
+            bg="#FFFFFF",
+            fg=config.text_primary,
+            insertbackground=config.text_primary,
+            font=config.font_body,
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=config.border_color,
+            highlightcolor=config.border_focus,
+        )
+        editor.insert(0, self.task_text)
+        editor.select_range(0, tk.END)
+        editor.icursor(tk.END)
+        editor.bind("<Return>", self._commit_edit_event)
+        editor.bind("<KP_Enter>", self._commit_edit_event)
+        editor.bind("<Escape>", self._cancel_edit_event)
+        editor.bind("<FocusOut>", lambda e: self.commit_edit())
+        self.label.pack_forget()
+        editor.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        self._editor = editor
+        editor.focus_set()
+
+    def commit_edit(self) -> None:
+        """Save the edited text through ``on_text_change``; empty or unchanged text cancels."""
+        if self._editor is None:
+            return
+        new_text = self._editor.get()
+        saved = self._on_text_change(self, new_text) if self._on_text_change else None
+        if saved is not None:
+            self.task_text = saved
+            self.label.config(text=saved)
+        self._close_editor()
+
+    def cancel_edit(self) -> None:
+        """Discard the edit and show the original text again."""
+        if self._editor is not None:
+            self._close_editor()
+
+    def _commit_edit_event(self, event: tk.Event | None = None) -> str:
+        self.commit_edit()
+        return "break"
+
+    def _cancel_edit_event(self, event: tk.Event | None = None) -> str:
+        # "break": Escape never reaches window-level bindings while editing.
+        self.cancel_edit()
+        return "break"
+
+    def _close_editor(self) -> None:
+        editor, self._editor = self._editor, None
+        had_focus = editor is not None and editor.focus_get() is editor
+        if editor is not None:
+            editor.destroy()
+        self.label.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        if had_focus:
+            self.winfo_toplevel().focus_set()
+        self._refit()
+
+    def _pack_anchor(self) -> tk.Widget | None:
+        """The widget the label/editor must be packed before (keeps the delete button last)."""
+        return self.delete_btn if self._delete_visible else None
 
     # ── Hover ────────────────────────────────
 
@@ -432,10 +602,24 @@ class TaskItem(tk.Frame):
         """Check if the mouse pointer is still within this row's widget tree."""
         try:
             x, y = self.winfo_pointerxy()
-            w = self.winfo_containing(x, y)
-            return w is not None and (w is self or str(w).startswith(str(self)))
+            return self.contains(self.winfo_containing(x, y))
         except tk.TclError:
             return False
+
+    def contains(self, widget: tk.Misc | None) -> bool:
+        """True if *widget* is this row or one of its descendants.
+
+        Compares Tk path names on a ``.`` boundary, so ``.!taskitem1`` does
+        not claim ``.!taskitem10``'s children.
+        """
+        if widget is None:
+            return False
+        path, own = str(widget), str(self)
+        return path == own or path.startswith(own + ".")
+
+    @property
+    def is_hovered(self) -> bool:
+        return self._is_hovered
 
     def _show_delete_btn(self) -> None:
         if not self._delete_visible:
@@ -518,7 +702,53 @@ class TaskItem(tk.Frame):
     def _on_canvas_configure(self, event: tk.Event) -> None:
         content_width = max(1, event.width - 2 * self._radius)
         self.card_canvas.itemconfigure(self._content_win, width=content_width)
+        if self._apply_wrap(content_width):
+            # The card's height changes: a new <Configure> follows and redraws it.
+            return
         self._redraw_card(event.width, event.height)
+
+    def _refit(self) -> None:
+        """Re-wrap the label at the current width (after its text changed)."""
+        width = self.card_canvas.winfo_width()
+        if width <= 1:
+            return
+        self._wrap_width = 0
+        if not self._apply_wrap(max(1, width - 2 * self._radius)):
+            self._redraw_card()
+
+    def _label_wrap_width(self, content_width: int) -> int:
+        """Width available to the label inside a content frame *content_width* wide.
+
+        Room for the delete button is always reserved, so revealing it on
+        hover never re-wraps the text.
+        """
+        reserved = (
+            2 * config.item_padding_x
+            + self.check.winfo_reqwidth()
+            + config.spacing_md
+            + self.delete_btn.winfo_reqwidth()
+            + config.spacing_sm
+        )
+        return max(_MIN_WRAP_WIDTH, content_width - reserved)
+
+    def _apply_wrap(self, content_width: int) -> bool:
+        """Wrap the label to *content_width*; return True if the card height changed."""
+        wrap = self._label_wrap_width(content_width)
+        if wrap == self._wrap_width:
+            return False
+        self._wrap_width = wrap
+        self.label.config(wraplength=wrap)
+        # Computed from the children instead of update_idletasks(), which
+        # would flush every pending idle task in the app from inside an event.
+        content_h = (
+            max(self.label.winfo_reqheight(), self.check.winfo_reqheight())
+            + 2 * config.item_padding_y
+        )
+        height = content_h + 2 * self._radius + self._shadow_px
+        if height == int(self.card_canvas.cget("height")):
+            return False
+        self.card_canvas.config(height=height)
+        return True
 
     def _redraw_card(self, width: int | None = None, height: int | None = None) -> None:
         w = width if width is not None else self.card_canvas.winfo_width()
@@ -547,8 +777,12 @@ class TaskItem(tk.Frame):
             tags=("card",),
         )
 
-        outline = config.drag_border if self._drag_active else config.border_color
-        outline_width = 2 if self._drag_active else 1
+        if self._drag_active:
+            outline, outline_width = config.drag_border, 2
+        elif self._has_focus:
+            outline, outline_width = config.border_focus, 2
+        else:
+            outline, outline_width = config.border_color, 1
         draw_rounded_rect(
             self.card_canvas,
             0,
