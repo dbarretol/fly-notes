@@ -953,6 +953,182 @@ def test_failing_to_save_geometry_still_closes(app_window, tmp_path, monkeypatch
     assert not app_window.winfo_exists()
 
 
+# ── Keyboard navigation (#13) ────────────────
+
+NAV_TASKS = [
+    {"id": "a", "text": "A", "completed": False},
+    {"id": "b", "text": "B", "completed": True},
+    {"id": "c", "text": "C", "completed": False},
+    {"id": "d", "text": "D", "completed": False},
+]
+
+
+@pytest.fixture
+def nav_app(app_window, tmp_path, monkeypatch):
+    """App with NAV_TASKS; records where keyboard focus is sent instead of
+    relying on real OS focus (unreliable for a test window)."""
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, NAV_TASKS)
+    focused = []
+    monkeypatch.setattr(app, "_focus_task", focused.append)
+    monkeypatch.setattr(app._entry_bar, "focus_entry", lambda: focused.append("entry"))
+    yield app, focused
+    app._on_close()
+
+
+def _row(app, task_id):
+    return next(w for w in app._task_list.task_widgets if w.task_id == task_id)
+
+
+def _ids(widgets):
+    return [w.task_id for w in widgets]
+
+
+def test_rows_are_focusable_and_bind_the_navigation_keys(nav_app):
+    app, _ = nav_app
+    canvas = _row(app, "a").card_canvas
+    assert int(canvas.cget("takefocus")) == 1
+    for key in ("<Up>", "<Down>", "<Alt-Up>", "<Alt-Down>", "<space>", "<Delete>", "<F2>"):
+        assert canvas.bind(key), key
+
+
+def test_focused_row_draws_a_focus_ring(root):
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x100+0+0")
+        item = TaskItem(win, task_id="1", text="Sample task")
+        item.pack(fill="x")
+        win.update_idletasks()
+
+        def outlines():
+            return {
+                item.card_canvas.itemcget(i, "outline")
+                for i in item.card_canvas.find_withtag("card")
+            }
+
+        assert config.border_focus not in outlines()
+        item._on_focus_in()
+        assert item.has_focus
+        assert config.border_focus in outlines()
+        item._on_focus_out()
+        assert config.border_focus not in outlines()
+    finally:
+        win.destroy()
+
+
+def test_arrow_keys_move_focus_through_rows_in_visual_order(nav_app):
+    app, focused = nav_app
+    # Visual order with grouping: a, c, d (to do) then b (completed)
+    assert _ids(app._task_list.packed_order()) == ["a", "c", "d", "b"]
+
+    assert _row(app, "a")._navigate(1) == "break"
+    assert _row(app, "d")._navigate(1) == "break"
+    _row(app, "b")._navigate(1)  # last row: nowhere to go
+    _row(app, "a")._navigate(-1)  # first row: back to the entry
+
+    assert [f if f == "entry" else f.task_id for f in focused] == ["c", "b", "entry"]
+
+
+def test_down_in_the_entry_focuses_the_first_row(nav_app):
+    app, focused = nav_app
+    assert app._focus_first_task() == "break"
+    assert _ids(focused) == ["a"]
+    assert app._entry_bar.entry_widget.bind("<Down>")
+
+
+def test_space_toggles_the_focused_row(nav_app):
+    app, _ = nav_app
+    row = _row(app, "a")
+    assert row._key_toggle() == "break"
+    assert row.completed_var.get() is True
+    assert app.manager.task_by_id("a")["completed"] is True
+
+
+def test_delete_key_removes_the_row_moves_focus_and_is_undoable(nav_app):
+    app, focused = nav_app
+    row = _row(app, "c")
+    row._has_focus = True
+
+    assert row._key_delete() == "break"
+
+    assert "c" not in _ids(app._task_list.task_widgets)
+    assert _ids(focused) == ["d"]
+    assert app._footer.undo_visible
+    app._undo()
+    assert _ids(app._task_list.task_widgets) == ["a", "b", "c", "d"]
+
+
+def test_deleting_the_last_focused_row_focuses_the_previous_one(nav_app):
+    app, focused = nav_app
+    row = _row(app, "b")  # last in visual order
+    row._has_focus = True
+    row._key_delete()
+    assert _ids(focused) == ["d"]
+
+
+def test_alt_arrows_reorder_within_the_group_and_keep_model_and_widgets_in_sync(nav_app):
+    app, focused = nav_app
+    assert _row(app, "d")._move(-1) == "break"  # d above c
+
+    assert _ids(app._task_list.visual_order()) == ["a", "d", "c", "b"]
+    assert _ids(app._task_list.task_widgets) == [t["id"] for t in app.manager.tasks]
+    assert _ids(focused) == ["d"]
+
+
+def test_alt_arrows_never_cross_the_group_boundary(nav_app):
+    app, _ = nav_app
+    before = [t["id"] for t in app.manager.tasks]
+    _row(app, "d")._move(1)  # next visual row is the completed "b"
+    _row(app, "b")._move(-1)
+    _row(app, "a")._move(-1)  # already first
+    assert [t["id"] for t in app.manager.tasks] == before
+
+
+def test_reorder_across_hidden_group_keeps_widget_order_equal_to_model(nav_app):
+    """Moving c above a jumps over the completed b in the model (pop+insert);
+    the old widget *swap* left the widget order out of step with the model,
+    which broke restoring a deleted task at its model index (#9)."""
+    app, _ = nav_app
+    _row(app, "c")._move(-1)
+
+    model = [t["id"] for t in app.manager.tasks]
+    assert _ids(app._task_list.task_widgets) == model
+
+    # Deleting and undoing still restores the exact same order.
+    app._delete_task(_row(app, "b"))
+    app._undo()
+    assert _ids(app._task_list.task_widgets) == model
+
+
+def test_ensure_visible_scrolls_a_row_into_view(root):
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x150+0+0")
+        task_list = TaskListView(win)
+        task_list.pack(fill="both", expand=True)
+        widgets = []
+        for i in range(15):
+            w = TaskItem(task_list.inner_frame, task_id=str(i), text=f"Task {i}")
+            task_list.add_widget(w)
+            widgets.append(w)
+        task_list.repack()
+        win.update()
+        assert task_list._canvas.canvasy(0) == 0
+
+        task_list.ensure_visible(widgets[-1])
+        win.update()
+        view_top = task_list._canvas.canvasy(0)
+        view_bottom = view_top + task_list._canvas.winfo_height()
+        last = widgets[-1]
+        assert view_top > 0
+        assert last.winfo_y() + last.winfo_height() <= view_bottom + 1
+
+        task_list.ensure_visible(widgets[0])
+        win.update()
+        assert task_list._canvas.canvasy(0) <= widgets[0].winfo_y()
+    finally:
+        win.destroy()
+
+
 # ── Section header hierarchy (issues-v4 #4) ──
 
 
