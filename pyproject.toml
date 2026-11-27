@@ -37,7 +37,7 @@ requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["fly_notes"]
+packages = ["fly_notes", "fly_notes.model", "fly_notes.platform", "fly_notes.ui"]
 
 [tool.ruff]
 line-length = 100
