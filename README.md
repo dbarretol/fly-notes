@@ -312,6 +312,7 @@ holds the taskbar button:
 ```powershell
 uv sync --extra dev                  # pytest, pytest-cov, ruff, pyinstaller
 uv run pytest                        # test suite
+uv run pytest -m "not gui"           # only the tests that need no display
 uv run pytest --cov=fly_notes --cov-report=term-missing
 uv run ruff check .                  # lint
 uv run ruff format .                 # format
@@ -343,7 +344,7 @@ fly-notes/
 │       ├── window_controller.py  # Borderless drag/resize + taskbar proxy
 │       ├── window_state.py    # state.json: geometry, always on top, monitor checks
 │       └── single_instance.py # One running copy per tasks file (Windows named mutex)
-├── tests/                     # pytest suite
+├── tests/                     # pytest suite, one file per module; shared fixtures in conftest.py
 ├── assets/                    # Window icon
 ├── docs/images/               # README screenshot
 ├── AGENTS.md                  # Notes for coding agents and contributors
