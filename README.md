@@ -12,6 +12,8 @@ reliable minimize/restore using a taskbar proxy window.
   - Add tasks quickly (**type + Enter**); long tasks wrap onto several lines
   - Mark complete (**checkbox + strikethrough**)
   - **Drag-and-drop reorder** (drag the task label)
+  - **Fully keyboard-driven**: `Tab` or `↓` from the new-task field moves into the list;
+    see [Keyboard Shortcuts](#keyboard-shortcuts)
   - **Edit in place**: double-click a task (or hover it and press `F2`); `Enter` saves,
     `Esc` cancels
   - Delete tasks individually
@@ -48,7 +50,18 @@ _(Add a screenshot or GIF here)_
 | `Ctrl+Z` | Undo the last deletion or clear (repeat to go further back) |
 | `Ctrl+W` | Close Fly Notes |
 
-All of them can be changed in the `shortcuts` section of `config.json`, using Tk event
+On a focused task row (highlighted with a focus ring):
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move to the previous / next task (`↑` on the first row returns to the new-task field) |
+| `Space` | Mark complete / not complete |
+| `Delete` | Delete the task (undo with `Ctrl+Z`) |
+| `Alt+↑` / `Alt+↓` | Move the task up / down within its group |
+| `F2` / `Enter` | Edit the task |
+
+`↓` in the new-task field jumps to the first task. The window-level shortcuts above
+can be changed in the `shortcuts` section of `config.json`, using Tk event
 syntax (e.g. `"close": "<Control-q>"`).
 
 ## Requirements
