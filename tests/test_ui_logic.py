@@ -1,19 +1,22 @@
 import logging
-import types
 import tkinter as tk
+import types
 from pathlib import Path
+
 import pytest
-from fly_notes.task_item import TaskItem
-from fly_notes.task_manager import TaskManager
+
+from fly_notes import window_controller as window_controller_module
+from fly_notes.config import ICON_PATH, config
 from fly_notes.fly_notes_app import (
     FlyNotesApp,
     TaskListView,
     blend_alpha_hex,
     compute_reorder_target,
 )
-from fly_notes import window_controller as window_controller_module
+from fly_notes.task_item import TaskItem
+from fly_notes.task_manager import TaskManager
 from fly_notes.window_controller import WindowController
-from fly_notes.config import ICON_PATH, config
+
 
 @pytest.fixture(scope="session")
 def root():
@@ -21,6 +24,7 @@ def root():
     r.withdraw()
     yield r
     r.destroy()
+
 
 def test_task_item_initial_state(root):
     item = TaskItem(root, task_id="123", text="Test Task", completed=False)
@@ -32,48 +36,58 @@ def test_task_item_initial_state(root):
     assert item.label.cget("fg") == config.text_primary
     item.destroy()
 
+
 def test_task_item_toggle_style(root):
     item = TaskItem(root, task_id="123", text="Test Task", completed=False)
-    
+
     # Simulate status change
     item.check.checked = True
     item._handle_status_change()
-    
+
     assert item.completed_var.get() is True
     assert item.label.cget("fg") == config.text_completed
-    
+
     item.destroy()
+
 
 def test_task_item_drag_callbacks(root):
     start_called = False
     stop_called = False
-    def on_start(item, event): nonlocal start_called; start_called = True
-    def on_stop(item, event): nonlocal stop_called; stop_called = True
 
-    item = TaskItem(root, task_id="123", text="Drag Task", 
-                    on_drag_start=on_start, on_drag_stop=on_stop)
-    
+    def on_start(item, event):
+        nonlocal start_called
+        start_called = True
+
+    def on_stop(item, event):
+        nonlocal stop_called
+        stop_called = True
+
+    item = TaskItem(
+        root, task_id="123", text="Drag Task", on_drag_start=on_start, on_drag_stop=on_stop
+    )
+
     item._start_drag(None)
     assert start_called is True
-    
+
     item._stop_drag(None)
     assert stop_called is True
     item.destroy()
 
+
 def test_task_item_hover_logic(root):
     item = TaskItem(root, task_id="123", text="Hover Task")
-    
+
     # Test enter
     item._on_enter()
     assert item._is_hovered is True
     assert item._delete_visible is True
-    
+
     # Test leave (pointer inside, so should remain hovered)
     # Mocking pointer_still_inside because it's hard to test GUI coordinates
     item._pointer_still_inside = lambda: True
     item._on_leave()
     assert item._is_hovered is True
-    
+
     # Test actual leave
     item._pointer_still_inside = lambda: False
     item._on_leave()
@@ -85,6 +99,7 @@ def test_task_item_hover_logic(root):
 
 # ── Drag-and-drop reorder (Issue #1) ─────────
 
+
 def test_compute_reorder_target_uses_visual_order_not_insertion_order():
     """A(pend), B(done), C(pend) in insertion order render visually as
     [A, C, B] when grouped. Dragging C up past A should target A —
@@ -93,9 +108,12 @@ def test_compute_reorder_target_uses_visual_order_not_insertion_order():
     visual_completed = [False, False, True]
 
     target = compute_reorder_target(
-        visual_ids, visual_completed,
-        dragging_id="C", delta_y=-(config.drag_threshold + 1),
-        threshold=config.drag_threshold, enforce_group_boundary=True,
+        visual_ids,
+        visual_completed,
+        dragging_id="C",
+        delta_y=-(config.drag_threshold + 1),
+        threshold=config.drag_threshold,
+        enforce_group_boundary=True,
     )
     assert target == "A"
 
@@ -107,9 +125,12 @@ def test_compute_reorder_target_stops_at_group_boundary():
     visual_completed = [False, False, True]
 
     target = compute_reorder_target(
-        visual_ids, visual_completed,
-        dragging_id="B", delta_y=-(config.drag_threshold + 1),
-        threshold=config.drag_threshold, enforce_group_boundary=True,
+        visual_ids,
+        visual_completed,
+        dragging_id="B",
+        delta_y=-(config.drag_threshold + 1),
+        threshold=config.drag_threshold,
+        enforce_group_boundary=True,
     )
     assert target is None
 
@@ -128,8 +149,10 @@ def test_do_reorder_regression_respects_grouping(root, tmp_path):
     widgets = {}
     for t in (task_a, task_b, task_c):
         w = TaskItem(
-            task_list.inner_frame, task_id=t["id"],
-            text=t["text"], completed=t["completed"],
+            task_list.inner_frame,
+            task_id=t["id"],
+            text=t["text"],
+            completed=t["completed"],
         )
         task_list.add_widget(w)
         widgets[t["text"]] = w
@@ -153,6 +176,7 @@ def test_do_reorder_regression_respects_grouping(root, tmp_path):
 
 # ── max_visible_tasks (Issue #2) ─────────────
 
+
 def test_repack_caps_rendered_rows_to_max_visible_tasks(root):
     """With max_visible_tasks=3 and 5 tasks loaded, at most 3 task rows
     are actually packed (rendered) — the rest stay unpacked, with a
@@ -174,8 +198,7 @@ def test_repack_caps_rendered_rows_to_max_visible_tasks(root):
         assert packed == widgets[:3]
 
         indicator_texts = [
-            w.cget("text") for w in task_list._transient_widgets
-            if isinstance(w, tk.Label)
+            w.cget("text") for w in task_list._transient_widgets if isinstance(w, tk.Label)
         ]
         assert config.string("more_hidden", count=2) in indicator_texts
     finally:
@@ -187,6 +210,7 @@ def test_repack_caps_rendered_rows_to_max_visible_tasks(root):
 
 
 # ── Resize callback width (Issue #5) ─────────
+
 
 def test_resize_callback_receives_width_without_stale_reread(root):
     """Regression for the winfo_width()-lag issue: immediately after
@@ -220,6 +244,7 @@ def test_resize_callback_receives_width_without_stale_reread(root):
 
 
 # ── Scroll affordance (issues-v4 #2) ─────────
+
 
 def test_blend_alpha_hex_flattens_alpha_onto_background():
     """shadow_color (#00000015, ~8% black) over a white background should
@@ -319,6 +344,7 @@ def test_scroll_increment_matches_task_row_height_to_prevent_split_rows(root):
 
 # ── Rounded card + shadow (issues-v4 #3) ─────
 
+
 def test_task_item_card_canvas_gets_real_size_and_draws_rounded_shapes(root):
     """Regression for 'border_radius/shadow_color declared but never
     applied': the card canvas must end up with a real pixel size and both
@@ -413,6 +439,7 @@ def test_task_item_card_resizes_with_row_width(root):
 
 # ── Section header hierarchy (issues-v4 #4) ──
 
+
 def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_path):
     """Regression for 'headers look like secondary body text': pending/
     completed section headers must render uppercase, in font_section
@@ -425,7 +452,9 @@ def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_pa
     task_list = TaskListView(root)
     widgets = []
     for t in (task_a, task_b):
-        w = TaskItem(task_list.inner_frame, task_id=t["id"], text=t["text"], completed=t["completed"])
+        w = TaskItem(
+            task_list.inner_frame, task_id=t["id"], text=t["text"], completed=t["completed"]
+        )
         task_list.add_widget(w)
         widgets.append(w)
     task_list.repack()
@@ -460,7 +489,8 @@ def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
     try:
         task_list.repack()
         more_label = next(
-            w for w in task_list._transient_widgets
+            w
+            for w in task_list._transient_widgets
             if isinstance(w, tk.Label) and "more" in w.cget("text")
         )
         assert more_label.cget("text") == config.string("more_hidden", count=2)
@@ -475,6 +505,7 @@ def test_more_hidden_indicator_keeps_plain_style_not_header_style(root):
 
 
 # ── Window icon (issues-v4 #5) ───────────────
+
 
 def test_icon_path_resolves_to_an_existing_bundled_asset():
     """Regression for 'no window icon': the .ico referenced by
