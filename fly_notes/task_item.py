@@ -193,8 +193,7 @@ class CustomCheckbox(tk.Canvas):
             outline = self._border_color
             border_w = 1.5
 
-        # Rounded rectangle via arcs + fill rects
-        self._draw_rounded_rect(pad, pad, s - pad, s - pad, r, fill, outline, border_w)
+        draw_rounded_rect(self, pad, pad, s - pad, s - pad, r, fill, outline, border_w)
 
         # Checkmark
         if self._checked:
@@ -218,20 +217,6 @@ class CustomCheckbox(tk.Canvas):
                 width=cw,
                 capstyle="round",
             )
-
-    def _draw_rounded_rect(
-        self,
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
-        r: int,
-        fill: str,
-        outline: str,
-        width: float,
-    ) -> None:
-        """Draw a rounded rectangle using arcs and rectangles."""
-        draw_rounded_rect(self, x1, y1, x2, y2, r, fill, outline, width)
 
     def set_canvas_bg(self, color: str) -> None:
         """Update background (used when row bg changes on hover/drag)."""
