@@ -32,13 +32,13 @@ class TaskEntryBar(tk.Frame):
 
         self._entry = tk.Entry(
             self,
-            bg=self._cfg.colors.item_bg,
+            bg=self._cfg.colors.entry_bg,
             fg=self._cfg.colors.text_placeholder,
             insertbackground=self._cfg.colors.text_primary,
             font=self._cfg.fonts.body,
             bd=0,
             highlightthickness=2,
-            highlightbackground=self._cfg.colors.border_color,
+            highlightbackground=self._cfg.colors.entry_border,
             highlightcolor=self._cfg.colors.border_focus,
         )
         self._entry.pack(fill="x", ipady=self._cfg.spacing.md)
