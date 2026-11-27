@@ -13,7 +13,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
 
-from ..config import AppConfig
+from ..config import DEFAULT_CONFIG, AppConfig
 from ..model.reorder import compute_reorder_target
 from ..model.store import TaskManager
 from ..model.task import Task
@@ -185,14 +185,33 @@ class FlyNotesApp:
         self.root.bind("<Map>", lambda _: self._apply_always_on_top())
 
         # Shortcuts
-        self.root.bind(self._cfg.shortcuts.close, lambda _: self._on_close())
-        self.root.bind(self._cfg.shortcuts.new_task, lambda _: self._entry_bar.focus_entry())
-        self.root.bind(self._cfg.shortcuts.delete_completed, lambda _: self._clear_completed())
-        self.root.bind(self._cfg.shortcuts.undo, lambda _: self._undo())
-        self.root.bind(self._cfg.shortcuts.edit_task, lambda _: self._edit_current_task())
-        self.root.bind(
-            self._cfg.shortcuts.toggle_always_on_top, lambda _: self.toggle_always_on_top()
-        )
+        self._bind_shortcut("close", lambda _: self._on_close())
+        self._bind_shortcut("new_task", lambda _: self._entry_bar.focus_entry())
+        self._bind_shortcut("delete_completed", lambda _: self._clear_completed())
+        self._bind_shortcut("undo", lambda _: self._undo())
+        self._bind_shortcut("edit_task", lambda _: self._edit_current_task())
+        self._bind_shortcut("toggle_always_on_top", lambda _: self.toggle_always_on_top())
+
+    def _bind_shortcut(self, name: str, handler: Callable[[tk.Event], object]) -> None:
+        """Bind ``shortcuts.<name>``; a sequence Tk rejects falls back to the default.
+
+        ``config.json`` can only be checked for shape when it is loaded: whether
+        Tk understands a sequence is only known here, when it is bound.
+        """
+        sequence = getattr(self._cfg.shortcuts, name)
+        try:
+            self.root.bind(sequence, handler)
+            return
+        except tk.TclError as exc:
+            default = DEFAULT_CONFIG["shortcuts"][name]
+            logger.warning(
+                "shortcuts.%s: Tk rejected %r (%s); using the default %r",
+                name,
+                sequence,
+                exc,
+                default,
+            )
+        self.root.bind(default, handler)
 
     # ── Single instance ──────────────────────
 

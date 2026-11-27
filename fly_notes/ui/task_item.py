@@ -138,6 +138,7 @@ class TaskItem(tk.Frame):
             check_color=self._cfg.colors.checkbox_check,
             border_color=self._cfg.colors.checkbox_border,
             hover_color=self._cfg.colors.checkbox_hover_bg,
+            box_color=self._cfg.colors.checkbox_bg,
         )
         self.check.pack(side="left", padx=(0, self._cfg.spacing.md))
 
@@ -165,7 +166,7 @@ class TaskItem(tk.Frame):
             bg=self._card_fill,
             fg=self._cfg.colors.text_secondary,
             bd=0,
-            activebackground=self._cfg.colors.btn_danger_bg,
+            activebackground=self._cfg.colors.btn_danger_hover,
             activeforeground="#FFFFFF",
             cursor="hand2",
             font=self._cfg.fonts.footer,
