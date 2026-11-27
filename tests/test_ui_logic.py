@@ -10,6 +10,7 @@ from fly_notes import window_controller as window_controller_module
 from fly_notes.config import ICON_PATH, config
 from fly_notes.fly_notes_app import (
     FlyNotesApp,
+    TaskEntryBar,
     TaskListView,
     blend_alpha_hex,
     compute_reorder_target,
@@ -25,6 +26,49 @@ def root():
     r.withdraw()
     yield r
     r.destroy()
+
+
+# ── Escape / shortcuts ───────────────────────
+
+
+def test_default_close_shortcut_is_not_escape():
+    assert config.shortcut_close != "<Escape>"
+    assert "focus_entry" not in config._data["shortcuts"]
+
+
+def test_escape_in_entry_clears_text_and_restores_placeholder(root):
+    submitted = []
+    bar = TaskEntryBar(root, on_submit=submitted.append)
+    bar.pack()
+    bar.focus_entry()
+    bar.entry_widget.insert(0, "half-typed task")
+
+    result = bar._cancel()
+
+    assert result == "break"
+    assert bar.get_text() == ""
+    assert bar.entry_widget.get() == config.string("entry_placeholder")
+    assert submitted == []
+    bar.destroy()
+
+
+def test_escape_while_typing_does_not_close_the_app(tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app_root = tk.Tk()
+    app = FlyNotesApp(app_root)
+    try:
+        entry = app._entry_bar.entry_widget
+        entry.focus_force()
+        app_root.update()
+        entry.insert("end", "typing")
+
+        entry.event_generate("<Escape>")
+        app_root.update()
+
+        assert app_root.winfo_exists()
+        assert app._entry_bar.get_text() == ""
+    finally:
+        app._on_close()
 
 
 def test_task_item_initial_state(root):
