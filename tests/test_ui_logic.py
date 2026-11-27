@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 import time
@@ -1500,3 +1501,30 @@ def test_tk_scheduler_cancel_survives_a_destroyed_window(root):
     win.destroy()
     scheduler.cancel(handle)  # e.g. the atexit flush after the window closed
     assert fired == []
+
+
+# ── Config values that used to be ignored or crash (#18) ──
+
+
+def test_a_shortcut_tk_rejects_falls_back_to_the_default(app_window, cfg, caplog):
+    bad = dataclasses.replace(cfg, shortcuts=dataclasses.replace(cfg.shortcuts, undo="<NoSuchKey>"))
+    with caplog.at_level(logging.WARNING, logger="fly_notes.ui.app"):
+        FlyNotesApp(app_window, bad)  # used to raise TclError on startup
+    assert "shortcuts.undo" in caplog.text
+    assert app_window.bind("<Control-z>")
+    assert app_window.bind(cfg.shortcuts.new_task)  # the others are still bound
+
+
+def test_checkbox_box_uses_checkbox_bg(root):
+    from fly_notes.ui.checkbox import CustomCheckbox
+
+    box = CustomCheckbox(root, bg="#FFFFFF", box_color="#123456")
+    fills = {box.itemcget(i, "fill") for i in box.find_all()}
+    assert "#123456" in fills
+    box.destroy()
+
+
+def test_pressed_delete_button_uses_btn_danger_hover(root, cfg):
+    item = TaskItem(root, cfg, task_id="1", text="Task")
+    assert item.delete_btn.cget("activebackground") == cfg.colors.btn_danger_hover
+    item.destroy()

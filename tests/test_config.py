@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import json
 import logging
@@ -12,7 +13,12 @@ from fly_notes.config import (
     _hex_to_rgb,
     _is_color,
     _validate_colors,
+    _validate_fonts,
     _validate_settings,
+    _validate_shortcuts,
+    _validate_spacing,
+    _validate_strings,
+    _validate_structure,
     _validate_transparency,
     default_config,
     load_config,
@@ -194,3 +200,124 @@ def test_deep_merge():
     override = {"b": 2}
     _deep_merge(base, override)
     assert "b" not in base
+
+
+# ── Validation gaps (#18) ─────────────────────
+
+
+def test_the_defaults_pass_every_check():
+    _validate_structure(copy.deepcopy(DEFAULT_CONFIG))
+
+
+@pytest.mark.parametrize("key", ["default_width", "max_visible_tasks", "drag_threshold"])
+@pytest.mark.parametrize("value", [0, -1, True, False, None, 1.5, "10"])
+def test_positive_int_settings_reject_zero_bools_and_non_ints(key, value):
+    with pytest.raises(ValueError):
+        _validate_settings({key: value})
+
+
+@pytest.mark.parametrize("key", ["item_padding_x", "border_radius", "inactive_fade_delay_ms"])
+def test_zero_is_allowed_where_it_means_none(key):
+    _validate_settings({key: 0})
+    with pytest.raises(ValueError):
+        _validate_settings({key: True})
+    with pytest.raises(ValueError):
+        _validate_settings({key: -1})
+
+
+def test_bool_and_path_settings_reject_null():
+    with pytest.raises(ValueError):
+        _validate_settings({"group_completed": None})
+    with pytest.raises(ValueError):
+        _validate_settings({"tasks_file": None})
+
+
+@pytest.mark.parametrize("axis", ["width", "height"])
+def test_min_size_must_not_exceed_default_size(axis):
+    _validate_settings({f"min_{axis}": 200, f"default_{axis}": 200})
+    with pytest.raises(ValueError, match=f"min_{axis}"):
+        _validate_settings({f"min_{axis}": 201, f"default_{axis}": 200})
+
+
+@pytest.mark.parametrize(
+    "trans",
+    [
+        {"active": 0.8, "inactive": 0.9},  # inactive above active
+        {"active": 1.0, "inactive": 0.0},  # an invisible window
+        {"active": True, "inactive": 0.5},
+    ],
+)
+def test_transparency_rejects_inverted_zero_and_bool_values(trans):
+    with pytest.raises(ValueError):
+        _validate_transparency(trans)
+
+
+def test_inactive_may_equal_active():
+    _validate_transparency({"active": 0.9, "inactive": 0.9})
+
+
+@pytest.mark.parametrize("value", [-1, True, 2.5, None])
+def test_spacing_must_be_non_negative_ints(value):
+    _validate_spacing({"md": 0})
+    with pytest.raises(ValueError):
+        _validate_spacing({"md": value})
+
+
+@pytest.mark.parametrize(
+    "font",
+    [
+        ["Segoe UI", 10.5],
+        ["Segoe UI", "10"],
+        ["Segoe UI", True],
+        ["Segoe UI", 0],
+        ["", 10],
+        [10, 10],
+        ["Segoe UI", 10, 1],
+    ],
+)
+def test_fonts_need_a_family_a_whole_size_and_string_styles(font):
+    with pytest.raises(ValueError):
+        _validate_fonts({"body": font})
+
+
+def test_valid_fonts_include_pixel_sizes_and_styles():
+    _validate_fonts({"body": ["Segoe UI", 11], "px": ["Segoe UI", -14, "bold", "italic"]})
+
+
+@pytest.mark.parametrize("value", ["", "   ", None, 5])
+def test_shortcuts_must_be_non_empty_strings(value):
+    with pytest.raises(ValueError):
+        _validate_shortcuts({"undo": value})
+
+
+def test_strings_must_be_text():
+    with pytest.raises(ValueError):
+        _validate_strings({"app_title": 5})
+
+
+@pytest.mark.parametrize(
+    "user_cfg",
+    [
+        {"settings": {"min_width": 500}},  # above default_width
+        {"settings": {"max_visible_tasks": 0}},
+        {"transparency": {"inactive": 1.0, "active": 0.5}},
+        {"fonts": {"body": ["Segoe UI", "big"]}},
+        {"shortcuts": {"undo": ""}},
+    ],
+)
+def test_load_config_falls_back_to_the_defaults_on_a_new_check(tmp_path, user_cfg):
+    config_file = _write(tmp_path / "config.json", user_cfg)
+    cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.settings == default_config(cfg.settings.tasks_file).settings
+    assert cfg.transparency == default_config().transparency
+    assert cfg.fonts == default_config().fonts
+
+
+def test_removed_animation_ms_is_ignored_not_an_error(tmp_path, caplog):
+    config_file = _write(
+        tmp_path / "config.json", {"settings": {"animation_ms": 150, "min_width": 250}}
+    )
+    with caplog.at_level(logging.WARNING, logger="fly_notes.config"):
+        cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.settings.min_width == 250
+    assert "settings.animation_ms" in caplog.text
