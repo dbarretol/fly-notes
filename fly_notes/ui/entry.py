@@ -32,7 +32,7 @@ class TaskEntryBar(tk.Frame):
 
         self._entry = tk.Entry(
             self,
-            bg="#FFFFFF",
+            bg=self._cfg.colors.item_bg,
             fg=self._cfg.colors.text_placeholder,
             insertbackground=self._cfg.colors.text_primary,
             font=self._cfg.fonts.body,
