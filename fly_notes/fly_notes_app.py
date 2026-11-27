@@ -32,6 +32,9 @@ from .window_state import (
 
 logger = logging.getLogger(__name__)
 
+# How often the running instance checks whether a second launch asked it to show.
+_ACTIVATION_POLL_MS = 300
+
 # ─────────────────────────────────────────────
 # Sub-components extracted from the monolithic class
 # ─────────────────────────────────────────────
@@ -790,6 +793,7 @@ class FlyNotesApp:
         self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
         self.root.attributes("-alpha", config.active_alpha)
         self._fade_after_id: str | None = None
+        self._activation_after_id: str | None = None
 
         # Data
         self.manager = TaskManager(
@@ -904,6 +908,26 @@ class FlyNotesApp:
         self.root.bind(config.shortcut_undo, lambda _: self._undo())
         self.root.bind(config.shortcut_edit_task, lambda _: self._edit_current_task())
         self.root.bind(config.shortcut_toggle_always_on_top, lambda _: self.toggle_always_on_top())
+
+    # ── Single instance ──────────────────────
+
+    def listen_for_activation(self, show_requested: Callable[[], bool]) -> None:
+        """Poll *show_requested* and come to the front whenever it returns True.
+
+        A second launch of the app signals the running one this way (see
+        ``single_instance``) instead of opening a competing copy.
+        """
+        self._show_requested = show_requested
+        self._poll_activation()
+
+    def _poll_activation(self) -> None:
+        self._activation_after_id = None
+        try:
+            if self._show_requested():
+                self.window_ctrl.bring_to_front()
+        except Exception:
+            logger.exception("Could not handle a request to show the window")
+        self._activation_after_id = self.root.after(_ACTIVATION_POLL_MS, self._poll_activation)
 
     # ── Always on top / inactive fade ────────
 
@@ -1175,6 +1199,9 @@ class FlyNotesApp:
 
     def _on_close(self) -> None:
         self._cancel_fade()
+        if self._activation_after_id is not None:
+            self.root.after_cancel(self._activation_after_id)
+            self._activation_after_id = None
         try:
             self.manager.flush()
         except Exception:
