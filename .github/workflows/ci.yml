@@ -46,3 +46,35 @@ jobs:
         run: uv sync --locked --extra dev
       - name: Run tests
         run: uv run pytest --cov=fly_notes --cov-report=term-missing
+
+  build:
+    name: Build .exe
+    # Only for pushes to main (release merges), and only once lint and tests pass.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+      - name: Build
+        run: uv run pyinstaller FlyNotes.spec --clean --noconfirm
+      - name: SHA-256
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/FlyNotes.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  FlyNotes.exe" | Out-File dist/FlyNotes.exe.sha256 -Encoding ascii
+          "SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: FlyNotes-${{ github.sha }}
+          path: |
+            dist/FlyNotes.exe
+            dist/FlyNotes.exe.sha256
+          if-no-files-found: error
+          retention-days: 30

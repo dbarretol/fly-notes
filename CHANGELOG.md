@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- CI builds `FlyNotes.exe` on every push to `main`, after lint and tests pass, and uploads it
+  with a SHA-256 checksum as a workflow artifact. ([#29])
+
 ## [0.3.0] - 2026-11-27
 
 Maintenance and speed release: the code is reorganized, typed and better tested, and long
@@ -188,3 +193,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#25]: https://github.com/dbarretol/fly-notes/issues/25
 [#26]: https://github.com/dbarretol/fly-notes/issues/26
 [#27]: https://github.com/dbarretol/fly-notes/issues/27
+[#29]: https://github.com/dbarretol/fly-notes/issues/29

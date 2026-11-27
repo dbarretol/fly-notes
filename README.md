@@ -368,6 +368,8 @@ flowchart LR
 - `main` only receives releases from `dev`.
 - GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs ruff and pyright on Ubuntu and
   the test suite on Windows for every pull request and push to `dev` and `main`.
+- On every push to `main`, once those checks pass, CI also builds `FlyNotes.exe` and uploads it
+  with its SHA-256 as a workflow artifact, kept for 30 days.
 - User-visible changes go in the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md).
 
 ### Building the .exe
