@@ -237,6 +237,27 @@ class CustomCheckbox(tk.Canvas):
         self.config(bg=color)
 
 
+class _BoolValue:
+    """``get()``/``set()`` holder with the same interface as ``tk.BooleanVar``.
+
+    No widget is bound to the completed flag, so a Tcl variable isn't needed;
+    a ``BooleanVar`` also breaks when it is garbage-collected off the main
+    thread (e.g. during the save timer), which logs "main thread is not in
+    main loop" from its ``__del__``.
+    """
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: bool = False) -> None:
+        self._value = bool(value)
+
+    def get(self) -> bool:
+        return self._value
+
+    def set(self, value: bool) -> None:
+        self._value = bool(value)
+
+
 class TaskItem(tk.Frame):
     """One task row: custom checkbox │ label │ delete button.
 
@@ -279,7 +300,7 @@ class TaskItem(tk.Frame):
         self._on_text_change = on_text_change
 
         # State
-        self.completed_var = tk.BooleanVar(value=completed)
+        self.completed_var = _BoolValue(completed)
         self._is_hovered = False
         self._is_dragging = False
         self._drag_active = False
