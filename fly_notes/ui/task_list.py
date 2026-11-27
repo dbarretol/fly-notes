@@ -9,6 +9,9 @@ from ..config import AppConfig
 from .drawing import blend_alpha_hex
 from .task_item import TaskItem
 
+# Options of one ``pack()`` call.
+PackOptions = dict[str, Any]
+
 
 class TaskListView(tk.Frame):
     """Scrollable canvas hosting TaskItem widgets with optional grouping."""
@@ -26,8 +29,6 @@ class TaskListView(tk.Frame):
         self._task_widgets: list[TaskItem] = []
         # Rows revealed past max_visible_tasks with "Show N more" (whole pages).
         self._extra_visible = 0
-        # Transient widgets (section headers, separators, spacers)
-        self._transient_widgets: list[tk.Widget] = []
 
         # Scrollbar
         self._scrollbar = tk.Scrollbar(
@@ -90,6 +91,32 @@ class TaskListView(tk.Frame):
             pady=self._cfg.spacing.xxl,
         )
 
+        # Section headers, separator, "Show N more" link and bottom spacer are
+        # created once and only re-packed (and re-labelled) by repack().
+        self._pending_header = self._make_section_label()
+        self._completed_header = self._make_section_label()
+        self._separator = tk.Frame(
+            self._inner,
+            bg=self._cfg.colors.separator_color,
+            height=self._cfg.settings.separator_height,
+            bd=0,
+        )
+        self._more_link = self._make_show_more_link()
+        self._spacer = tk.Frame(
+            self._inner, bg=self._cfg.colors.content_bg, height=self._cfg.spacing.lg, bd=0
+        )
+
+        sp = self._cfg.spacing
+        self._row_opts: PackOptions = {"fill": "x", "pady": sp.xs, "padx": sp.md}
+        self._pack_opts: dict[tk.Widget, PackOptions] = {
+            self._empty_label: {"fill": "x", "padx": sp.xl},
+            self._pending_header: {"fill": "x", "padx": sp.xl, "pady": (sp.md, sp.xs)},
+            self._separator: {"fill": "x", "padx": sp.xl, "pady": (sp.lg, sp.xs)},
+            self._completed_header: {"fill": "x", "padx": sp.xl, "pady": (sp.xs, sp.xs)},
+            self._more_link: {"anchor": "w", "padx": sp.xl, "pady": (sp.xs, sp.xs)},
+            self._spacer: {"fill": "x"},
+        }
+
         # Rows change height when their text re-wraps (e.g. on resize), so the
         # scroll region follows the inner frame's size instead of only repack().
         self._inner.bind("<Configure>", self._on_inner_configure)
@@ -110,7 +137,7 @@ class TaskListView(tk.Frame):
     def visual_order(self) -> list[TaskItem]:
         """Return widgets in the order they are actually rendered.
 
-        Mirrors ``_pack_grouped``/``_pack_flat``: when grouping is
+        Mirrors ``_layout``: when grouping is
         enabled, pending widgets come first, then completed ones; each
         group otherwise keeps insertion order.
         """
@@ -174,46 +201,13 @@ class TaskListView(tk.Frame):
         widget.destroy()
 
     def repack(self) -> None:
-        """Re-layout all task widgets with optional grouping."""
-        # Destroy old transient widgets
-        for w in self._transient_widgets:
-            try:
-                w.destroy()
-            except tk.TclError:
-                pass
-        self._transient_widgets.clear()
+        """Bring the rendered rows in line with the task order, grouping and cap.
 
-        # Unpack task widgets (don't destroy)
-        for w in self._task_widgets:
-            w.pack_forget()
-
-        if not self._task_widgets:
-            self._update_empty_state()
-            self._update_scroll_region()
-            return
-
-        visible, hidden_count = self._visible_widgets()
-
-        if self._cfg.settings.group_completed:
-            self._pack_grouped(visible)
-        else:
-            self._pack_flat(visible)
-
-        if hidden_count:
-            self._make_show_more_link(hidden_count).pack(
-                anchor="w",
-                padx=self._cfg.spacing.xl,
-                pady=(self._cfg.spacing.xs, self._cfg.spacing.xs),
-            )
-
-        # Bottom spacer
-        spacer = tk.Frame(
-            self._inner, bg=self._cfg.colors.content_bg, height=self._cfg.spacing.lg, bd=0
-        )
-        spacer.pack(fill="x")
-        self._transient_widgets.append(spacer)
-
-        self._update_empty_state()
+        Incremental: the structural widgets are reused, and only the widgets
+        that are missing or out of place are packed, so a swap while dragging
+        moves one row instead of re-laying out the whole list.
+        """
+        self._apply_layout(self._layout())
         self._update_scroll_region()
 
     def update_canvas_width(self, width: int) -> None:
@@ -227,7 +221,13 @@ class TaskListView(tk.Frame):
         self._extra_visible += self._cfg.settings.max_visible_tasks
         self.repack()
 
-    def _make_show_more_link(self, hidden_count: int) -> tk.Label:
+    def _show_more_text(self, hidden_count: int) -> str:
+        page = min(hidden_count, self._cfg.settings.max_visible_tasks)
+        if page < hidden_count:
+            return self._cfg.string("more_hidden_paged", count=page, hidden=hidden_count)
+        return self._cfg.string("more_hidden", count=page)
+
+    def _make_show_more_link(self) -> tk.Label:
         """The "Show N more" link under the list, for rows past the cap.
 
         Deliberately not routed through _make_section_label: this is a
@@ -235,14 +235,8 @@ class TaskListView(tk.Frame):
         plain footer-sized link styling rather than the bold uppercase
         header treatment.
         """
-        page = min(hidden_count, self._cfg.settings.max_visible_tasks)
-        if page < hidden_count:
-            text = self._cfg.string("more_hidden_paged", count=page, hidden=hidden_count)
-        else:
-            text = self._cfg.string("more_hidden", count=page)
         link = tk.Label(
             self._inner,
-            text=text,
             fg=self._cfg.colors.link_color,
             bg=self._cfg.colors.content_bg,
             font=self._cfg.fonts.footer,
@@ -263,7 +257,6 @@ class TaskListView(tk.Frame):
             lambda _: link.config(fg=self._cfg.colors.link_color, font=self._cfg.fonts.footer),
         )
         link.bind("<MouseWheel>", self._on_mousewheel)
-        self._transient_widgets.append(link)
         return link
 
     def _visible_widgets(self) -> tuple[list[TaskItem], int]:
@@ -279,78 +272,87 @@ class TaskListView(tk.Frame):
             return visual, 0
         return visual[:limit], len(visual) - limit
 
-    def _pack_grouped(self, visible: list[TaskItem]) -> None:
+    def _layout(self) -> list[tk.Widget]:
+        """The widgets that should be packed in the inner frame, top to bottom.
+
+        Also updates the texts of the section headers and the "Show N more" link.
+        """
+        if not self._task_widgets:
+            return [self._empty_label]
+
+        visible, hidden_count = self._visible_widgets()
         visible_set = set(visible)
-        pending = [w for w in self._task_widgets if not w.completed_var.get()]
-        completed = [w for w in self._task_widgets if w.completed_var.get()]
-
-        if pending:
-            header = self._make_section_label(
-                self._cfg.string("section_pending", count=len(pending))
-            )
-            header.pack(
-                fill="x",
-                padx=self._cfg.spacing.xl,
-                pady=(self._cfg.spacing.md, self._cfg.spacing.xs),
-            )
-        for w in pending:
-            if w in visible_set:
-                w.pack(fill="x", pady=self._cfg.spacing.xs, padx=self._cfg.spacing.md)
-
-        if completed:
+        layout: list[tk.Widget] = []
+        if self._cfg.settings.group_completed:
+            pending = [w for w in self._task_widgets if not w.completed_var.get()]
+            completed = [w for w in self._task_widgets if w.completed_var.get()]
             if pending:
-                sep = tk.Frame(
-                    self._inner,
-                    bg=self._cfg.colors.separator_color,
-                    height=self._cfg.settings.separator_height,
-                    bd=0,
+                self._set_text(
+                    self._pending_header,
+                    self._cfg.string("section_pending", count=len(pending)).upper(),
                 )
-                sep.pack(
-                    fill="x",
-                    padx=self._cfg.spacing.xl,
-                    pady=(self._cfg.spacing.lg, self._cfg.spacing.xs),
+                layout.append(self._pending_header)
+                layout += [w for w in pending if w in visible_set]
+            if completed:
+                if pending:
+                    layout.append(self._separator)
+                self._set_text(
+                    self._completed_header,
+                    self._cfg.string("section_completed", count=len(completed)).upper(),
                 )
-                self._transient_widgets.append(sep)
+                layout.append(self._completed_header)
+                layout += [w for w in completed if w in visible_set]
+        else:
+            layout += [w for w in self._task_widgets if w in visible_set]
 
-            header = self._make_section_label(
-                self._cfg.string("section_completed", count=len(completed))
-            )
-            header.pack(
-                fill="x",
-                padx=self._cfg.spacing.xl,
-                pady=(self._cfg.spacing.xs, self._cfg.spacing.xs),
-            )
-            for w in completed:
-                if w in visible_set:
-                    w.pack(fill="x", pady=self._cfg.spacing.xs, padx=self._cfg.spacing.md)
+        if hidden_count:
+            self._set_text(self._more_link, self._show_more_text(hidden_count))
+            layout.append(self._more_link)
+        layout.append(self._spacer)
+        return layout
 
-    def _pack_flat(self, visible: list[TaskItem]) -> None:
-        visible_set = set(visible)
-        for w in self._task_widgets:
-            if w in visible_set:
-                w.pack(fill="x", pady=self._cfg.spacing.xs, padx=self._cfg.spacing.md)
+    def _apply_layout(self, layout: list[tk.Widget]) -> None:
+        """Pack *layout* in order, touching only what differs from the current packing."""
+        wanted = set(layout)
+        current = []
+        for w in self._inner.pack_slaves():
+            if w in wanted:
+                current.append(w)
+            else:
+                w.pack_forget()
 
-    def _make_section_label(self, text: str) -> tk.Label:
+        for i, w in enumerate(layout):
+            if i < len(current) and current[i] is w:
+                continue
+            if w in current:
+                current.remove(w)
+            opts = self._pack_opts.get(w, self._row_opts)
+            if i > 0:
+                w.pack(**opts, after=layout[i - 1])
+            elif current:
+                w.pack(**opts, before=current[0])
+            else:
+                w.pack(**opts)
+            current.insert(i, w)
+
+    @staticmethod
+    def _set_text(label: tk.Label, text: str) -> None:
+        """Change *label*'s text only when it differs (a change re-lays out the label)."""
+        if label.cget("text") != text:
+            label.config(text=text)
+
+    def _make_section_label(self) -> tk.Label:
         # Uppercase is the "letter-spacing" simulation Tk can't do natively
         # (no real tracking support) — combined with the bold, larger
         # font_section and the dedicated section_header colour, it gives
         # section separators more visual weight than the 11pt body text.
-        lbl = tk.Label(
+        return tk.Label(
             self._inner,
-            text=text.upper(),
             fg=self._cfg.colors.section_header,
             bg=self._cfg.colors.content_bg,
             font=self._cfg.fonts.section,
             anchor="w",
         )
-        self._transient_widgets.append(lbl)
-        return lbl
-
-    def _update_empty_state(self) -> None:
-        if not self._task_widgets:
-            self._empty_label.pack(fill="x", padx=self._cfg.spacing.xl)
-        else:
-            self._empty_label.pack_forget()
 
     def _update_scroll_region(self) -> None:
         self._inner.update_idletasks()

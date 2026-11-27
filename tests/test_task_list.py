@@ -1,5 +1,6 @@
 """TaskListView: scrolling, grouping, the row cap and the 'Show N more' link."""
 
+import random
 import tkinter as tk
 
 import pytest
@@ -31,7 +32,7 @@ def test_repack_caps_rendered_rows_to_max_visible_tasks(root, cfg):
         assert packed == widgets[:3]
 
         indicator_texts = [
-            w.cget("text") for w in task_list._transient_widgets if isinstance(w, tk.Label)
+            w.cget("text") for w in task_list.inner_frame.pack_slaves() if isinstance(w, tk.Label)
         ]
         assert cfg.string("more_hidden", count=2) in indicator_texts
     finally:
@@ -178,7 +179,7 @@ def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_pa
         widgets.append(w)
     task_list.repack()
 
-    labels = [w for w in task_list._transient_widgets if isinstance(w, tk.Label)]
+    labels = [w for w in task_list.inner_frame.pack_slaves() if isinstance(w, tk.Label)]
     texts = {lbl.cget("text") for lbl in labels}
     assert "TO DO (1)" in texts
     assert "COMPLETED (1)" in texts
@@ -207,7 +208,7 @@ def test_more_hidden_indicator_keeps_plain_style_not_header_style(root, cfg):
         task_list.repack()
         more_label = next(
             w
-            for w in task_list._transient_widgets
+            for w in task_list.inner_frame.pack_slaves()
             if isinstance(w, tk.Label) and "more" in w.cget("text")
         )
         assert more_label.cget("text") == cfg.string("more_hidden", count=2)
@@ -240,7 +241,7 @@ def capped_list(root, monkeypatch, cfg):
 def _show_more_link(task_list):
     links = [
         w
-        for w in task_list._transient_widgets
+        for w in task_list.inner_frame.pack_slaves()
         if isinstance(w, tk.Label) and w.cget("cursor") == "hand2"
     ]
     return links[0] if links else None
@@ -310,5 +311,131 @@ def test_wheel_over_any_part_of_a_row_scrolls_the_list(root, cfg):
         for part in parts:
             for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
                 assert part.bind(sequence), (part, sequence)
+    finally:
+        task_list.destroy()
+
+
+# ── Incremental repack (#25) ──────────────────
+
+
+def _list_with(root, cfg, count, completed=()):
+    task_list = TaskListView(root, cfg)
+    widgets = []
+    for i in range(count):
+        w = TaskItem(
+            task_list.inner_frame, cfg, task_id=str(i), text=f"Task {i}", completed=i in completed
+        )
+        task_list.add_widget(w)
+        widgets.append(w)
+    task_list.repack()
+    return task_list, widgets
+
+
+def _packed_rows(task_list):
+    """Task rows in the order they are packed (what the user sees, top to bottom)."""
+    return [w for w in task_list.inner_frame.pack_slaves() if isinstance(w, TaskItem)]
+
+
+def _spy_pack(widgets):
+    """Record which widgets get packed (moved) from now on."""
+    calls = []
+    for w in widgets:
+        real = w.pack
+
+        def spy(*args, _w=w, _real=real, **kwargs):
+            calls.append(_w.task_id)
+            _real(*args, **kwargs)
+
+        w.pack = spy
+    return calls
+
+
+def test_repack_reuses_section_headers_and_updates_their_counts(root, cfg):
+    task_list, widgets = _list_with(root, cfg, 3, completed={2})
+    try:
+        children = set(task_list.inner_frame.winfo_children())
+        widgets[0].completed_var.set(True)
+        task_list.repack()
+
+        assert set(task_list.inner_frame.winfo_children()) == children
+        texts = [
+            w.cget("text") for w in task_list.inner_frame.pack_slaves() if isinstance(w, tk.Label)
+        ]
+        assert texts == ["TO DO (1)", "COMPLETED (2)"]
+        assert _packed_rows(task_list) == [widgets[1], widgets[0], widgets[2]]
+    finally:
+        task_list.destroy()
+
+
+def test_a_swap_moves_only_one_row(root, cfg):
+    task_list, widgets = _list_with(root, cfg, 6)
+    try:
+        calls = _spy_pack(widgets)
+        task_list.sync_order(["0", "1", "3", "2", "4", "5"])
+        task_list.repack()
+
+        assert calls == ["3"]
+        assert [w.task_id for w in _packed_rows(task_list)] == ["0", "1", "3", "2", "4", "5"]
+    finally:
+        task_list.destroy()
+
+
+def test_an_unchanged_repack_packs_nothing(root, cfg):
+    task_list, widgets = _list_with(root, cfg, 4, completed={1})
+    try:
+        calls = _spy_pack(widgets)
+        task_list.repack()
+        assert calls == []
+    finally:
+        task_list.destroy()
+
+
+@pytest.mark.parametrize("group_completed", [True, False])
+def test_packing_follows_the_visual_order_through_any_sequence_of_changes(
+    root, cfg, group_completed
+):
+    """Random adds, deletes, toggles and moves: after each repack the rows on
+    screen are exactly the visual order, capped, with the headers in place."""
+    rng = random.Random(25)
+    cfg = cfg.with_settings(group_completed=group_completed, max_visible_tasks=5)
+    task_list, _ = _list_with(root, cfg, 4)
+    next_id = 4
+    try:
+        for _ in range(120):
+            widgets = task_list.task_widgets
+            op = rng.choice(["add", "delete", "toggle", "move"] if widgets else ["add"])
+            if op == "add":
+                w = TaskItem(task_list.inner_frame, cfg, task_id=str(next_id), text="t")
+                next_id += 1
+                task_list.add_widget(w, index=rng.randint(0, len(widgets)))
+            elif op == "delete":
+                task_list.remove_widget(rng.choice(widgets))
+            elif op == "toggle":
+                var = rng.choice(widgets).completed_var
+                var.set(not var.get())
+            else:
+                ids = [w.task_id for w in widgets]
+                ids.insert(rng.randint(0, len(ids) - 1), ids.pop(rng.randrange(len(ids))))
+                task_list.sync_order(ids)
+            task_list.repack()
+
+            visible = task_list.visual_order()[: 5 + task_list._extra_visible]
+            assert _packed_rows(task_list) == visible
+            slaves = task_list.inner_frame.pack_slaves()
+            if not task_list.task_widgets:
+                assert slaves == [task_list._empty_label]
+                continue
+            assert slaves[-1] is task_list._spacer
+            if group_completed:
+                pending = [w for w in task_list.task_widgets if not w.completed_var.get()]
+                if pending:
+                    assert slaves[0] is task_list._pending_header
+                if len(pending) < len(task_list.task_widgets):
+                    header = slaves.index(task_list._completed_header)
+                    assert all(
+                        not w.completed_var.get()
+                        for w in slaves[:header]
+                        if isinstance(w, TaskItem)
+                    )
     finally:
         task_list.destroy()
