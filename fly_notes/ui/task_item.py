@@ -13,7 +13,7 @@ from __future__ import annotations
 import tkinter as tk
 from collections.abc import Callable
 
-from ..config import config
+from ..config import AppConfig
 from .checkbox import CustomCheckbox
 from .drawing import blend_alpha_hex, draw_rounded_rect
 
@@ -50,6 +50,7 @@ class TaskItem(tk.Frame):
     def __init__(
         self,
         master: tk.Widget,
+        cfg: AppConfig,
         task_id: str,
         text: str,
         completed: bool = False,
@@ -63,9 +64,10 @@ class TaskItem(tk.Frame):
         on_move: Callable[[TaskItem, int], None] | None = None,
         **kwargs,
     ) -> None:
+        self._cfg = cfg
         super().__init__(
             master,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             **kwargs,
@@ -91,8 +93,10 @@ class TaskItem(tk.Frame):
         self._is_dragging = False
         self._drag_active = False
         self._has_focus = False
-        self._card_fill = config.item_bg_completed if completed else config.item_bg
-        self._radius = config.border_radius
+        self._card_fill = (
+            self._cfg.colors.item_bg_completed if completed else self._cfg.colors.item_bg
+        )
+        self._radius = self._cfg.settings.border_radius
         self._shadow_px = 2
 
         # ── Card background (rounded rect + subtle drop shadow) ──
@@ -103,7 +107,7 @@ class TaskItem(tk.Frame):
         # The card canvas is also the row's keyboard focus target (Tab/arrows).
         self.card_canvas = tk.Canvas(
             self,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             takefocus=1,
@@ -114,8 +118,8 @@ class TaskItem(tk.Frame):
         self._content = tk.Frame(
             self.card_canvas,
             bg=self._card_fill,
-            padx=config.item_padding_x,
-            pady=config.item_padding_y,
+            padx=self._cfg.settings.item_padding_x,
+            pady=self._cfg.settings.item_padding_y,
         )
         self._content_win = self.card_canvas.create_window(
             self._radius,
@@ -127,23 +131,23 @@ class TaskItem(tk.Frame):
         # ── Custom Checkbox ─────────────────
         self.check = CustomCheckbox(
             self._content,
-            size=config.checkbox_size,
+            size=self._cfg.settings.checkbox_size,
             checked=completed,
             command=self._handle_status_change,
             bg=self._card_fill,
-            check_color=config.checkbox_check,
-            border_color=config.checkbox_border,
-            hover_color=config.checkbox_hover_bg,
+            check_color=self._cfg.colors.checkbox_check,
+            border_color=self._cfg.colors.checkbox_border,
+            hover_color=self._cfg.colors.checkbox_hover_bg,
         )
-        self.check.pack(side="left", padx=(0, config.spacing_md))
+        self.check.pack(side="left", padx=(0, self._cfg.spacing.md))
 
         # ── Label ───────────────────────────
         self.label = tk.Label(
             self._content,
             text=text,
-            fg=config.text_primary,
+            fg=self._cfg.colors.text_primary,
             bg=self._card_fill,
-            font=config.font_body,
+            font=self._cfg.fonts.body,
             anchor="w",
             justify="left",
         )
@@ -156,15 +160,15 @@ class TaskItem(tk.Frame):
         # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
             self._content,
-            text=config.string("btn_close"),
+            text=self._cfg.string("btn_close"),
             command=self._handle_delete,
             bg=self._card_fill,
-            fg=config.text_secondary,
+            fg=self._cfg.colors.text_secondary,
             bd=0,
-            activebackground=config.btn_danger_bg,
+            activebackground=self._cfg.colors.btn_danger_bg,
             activeforeground="#FFFFFF",
             cursor="hand2",
-            font=config.font_footer,
+            font=self._cfg.fonts.footer,
             width=2,
             relief="flat",
             takefocus=True,
@@ -287,13 +291,13 @@ class TaskItem(tk.Frame):
         editor = tk.Entry(
             self._content,
             bg="#FFFFFF",
-            fg=config.text_primary,
-            insertbackground=config.text_primary,
-            font=config.font_body,
+            fg=self._cfg.colors.text_primary,
+            insertbackground=self._cfg.colors.text_primary,
+            font=self._cfg.fonts.body,
             bd=0,
             highlightthickness=1,
-            highlightbackground=config.border_color,
-            highlightcolor=config.border_focus,
+            highlightbackground=self._cfg.colors.border_color,
+            highlightcolor=self._cfg.colors.border_focus,
         )
         editor.insert(0, self.task_text)
         editor.select_range(0, tk.END)
@@ -354,7 +358,7 @@ class TaskItem(tk.Frame):
         self._is_hovered = True
         self._show_delete_btn()
         if not self.completed_var.get():
-            self._set_row_bg(config.drag_highlight_color)
+            self._set_row_bg(self._cfg.colors.drag_highlight)
         self.card_canvas.config(cursor="hand2")
 
     def _on_leave(self, event: tk.Event | None = None) -> None:
@@ -369,11 +373,11 @@ class TaskItem(tk.Frame):
 
     def _on_delete_btn_enter(self, event: tk.Event | None = None) -> None:
         self._is_hovered = True
-        self.delete_btn.config(bg=config.btn_danger_bg, fg="#FFFFFF")
+        self.delete_btn.config(bg=self._cfg.colors.btn_danger_bg, fg="#FFFFFF")
 
     def _on_delete_btn_leave(self, event: tk.Event | None = None) -> None:
         bg = self._current_base_bg()
-        self.delete_btn.config(bg=bg, fg=config.text_secondary)
+        self.delete_btn.config(bg=bg, fg=self._cfg.colors.text_secondary)
         if not self._pointer_still_inside():
             self._is_hovered = False
             self._hide_delete_btn()
@@ -404,7 +408,7 @@ class TaskItem(tk.Frame):
 
     def _show_delete_btn(self) -> None:
         if not self._delete_visible:
-            self.delete_btn.pack(side="right", padx=(config.spacing_sm, 0))
+            self.delete_btn.pack(side="right", padx=(self._cfg.spacing.sm, 0))
             self._delete_visible = True
 
     def _hide_delete_btn(self) -> None:
@@ -428,15 +432,19 @@ class TaskItem(tk.Frame):
     def _update_style(self) -> None:
         completed = self.completed_var.get()
         if completed:
-            self.label.config(font=config.font_body_strike, fg=config.text_completed)
+            self.label.config(font=self._cfg.fonts.body_strike, fg=self._cfg.colors.text_completed)
         else:
-            self.label.config(font=config.font_body, fg=config.text_primary)
+            self.label.config(font=self._cfg.fonts.body, fg=self._cfg.colors.text_primary)
         # Sync checkbox without triggering redundant redraws
         self.check.checked = completed
         self._apply_base_bg()
 
     def _current_base_bg(self) -> str:
-        return config.item_bg_completed if self.completed_var.get() else config.item_bg
+        return (
+            self._cfg.colors.item_bg_completed
+            if self.completed_var.get()
+            else self._cfg.colors.item_bg
+        )
 
     def _apply_base_bg(self) -> None:
         self._set_row_bg(self._current_base_bg())
@@ -474,7 +482,7 @@ class TaskItem(tk.Frame):
         self._content.config(bg=color)
         self.label.config(bg=color)
         self.check.set_canvas_bg(color)
-        if self._delete_visible and self.delete_btn.cget("bg") != config.btn_danger_bg:
+        if self._delete_visible and self.delete_btn.cget("bg") != self._cfg.colors.btn_danger_bg:
             self.delete_btn.config(bg=color)
         self._redraw_card()
 
@@ -504,11 +512,11 @@ class TaskItem(tk.Frame):
         hover never re-wraps the text.
         """
         reserved = (
-            2 * config.item_padding_x
+            2 * self._cfg.settings.item_padding_x
             + self.check.winfo_reqwidth()
-            + config.spacing_md
+            + self._cfg.spacing.md
             + self.delete_btn.winfo_reqwidth()
-            + config.spacing_sm
+            + self._cfg.spacing.sm
         )
         return max(_MIN_WRAP_WIDTH, content_width - reserved)
 
@@ -523,7 +531,7 @@ class TaskItem(tk.Frame):
         # would flush every pending idle task in the app from inside an event.
         content_h = (
             max(self.label.winfo_reqheight(), self.check.winfo_reqheight())
-            + 2 * config.item_padding_y
+            + 2 * self._cfg.settings.item_padding_y
         )
         height = content_h + 2 * self._radius + self._shadow_px
         if height == int(self.card_canvas.cget("height")):
@@ -544,7 +552,7 @@ class TaskItem(tk.Frame):
         # main card (drawn on top, inset by `off`) leaves only a thin sliver
         # visible along the bottom/right edges — a cheap drop-shadow with no
         # real alpha compositing support in Tk.
-        shadow_fill = blend_alpha_hex(config.shadow_color, config.content_bg)
+        shadow_fill = blend_alpha_hex(self._cfg.colors.shadow_color, self._cfg.colors.content_bg)
         draw_rounded_rect(
             self.card_canvas,
             off,
@@ -559,11 +567,11 @@ class TaskItem(tk.Frame):
         )
 
         if self._drag_active:
-            outline, outline_width = config.drag_border, 2
+            outline, outline_width = self._cfg.colors.drag_border, 2
         elif self._has_focus:
-            outline, outline_width = config.border_focus, 2
+            outline, outline_width = self._cfg.colors.border_focus, 2
         else:
-            outline, outline_width = config.border_color, 1
+            outline, outline_width = self._cfg.colors.border_color, 1
         draw_rounded_rect(
             self.card_canvas,
             0,

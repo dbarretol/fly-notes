@@ -13,7 +13,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
 
-from ..config import config
+from ..config import AppConfig
 from ..model.reorder import compute_reorder_target
 from ..model.store import TaskManager
 from ..model.task import Task
@@ -60,37 +60,41 @@ class TkScheduler:
 class FlyNotesApp:
     """Top-level controller for the Fly Notes application."""
 
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(self, root: tk.Tk, cfg: AppConfig) -> None:
+        self._cfg = cfg
         self.root = root
-        self.root.title(config.string("app_title"))
+        self.root.title(self._cfg.string("app_title"))
         self.root.overrideredirect(True)
-        self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
-        self.root.attributes("-alpha", config.active_alpha)
+        self.root.config(bg=self._cfg.colors.content_bg, highlightthickness=0, bd=0)
+        self.root.attributes("-alpha", self._cfg.transparency.active)
         self._fade_after_id: str | None = None
         self._activation_after_id: str | None = None
 
         # Data
         self.manager = TaskManager(
-            tasks_file=config.tasks_file,
+            tasks_file=self._cfg.settings.tasks_file,
             error_callback=self._show_error_later,
             scheduler=TkScheduler(self.root),
         )
 
         # Window geometry: last session's size/position, if still on a monitor
-        self._state_file = state_file_for(config.tasks_file)
+        self._state_file = state_file_for(self._cfg.settings.tasks_file)
         self._initial_geometry = self._restored_geometry()
         self.root.geometry(self._initial_geometry.to_tk())
 
         # Window controller
         self.window_ctrl = WindowController(
             self.root,
+            cfg,
             on_resize_callback=self._on_window_resize,
             on_close=self._on_close,
         )
 
         # Always on top: last session's choice, else the configured default
         saved_on_top = load_always_on_top(self._state_file)
-        self._always_on_top = config.always_on_top if saved_on_top is None else saved_on_top
+        self._always_on_top = (
+            self._cfg.settings.always_on_top if saved_on_top is None else saved_on_top
+        )
         self._apply_always_on_top()
 
         # Drag state
@@ -99,7 +103,7 @@ class FlyNotesApp:
 
         self._build_ui()
         self._bind_events()
-        self.window_ctrl.setup_resize_handles(config.content_bg)
+        self.window_ctrl.setup_resize_handles(self._cfg.colors.content_bg)
         # The list's canvas starts at default_width; match the restored width.
         self._on_window_resize(self._initial_geometry.width)
         self._load_initial_tasks()
@@ -112,6 +116,7 @@ class FlyNotesApp:
         # Header
         self._header = HeaderBar(
             self.root,
+            self._cfg,
             on_close=self._on_close,
             on_minimize=self.window_ctrl.minimize_window,
             on_toggle_pin=self.toggle_always_on_top,
@@ -122,20 +127,22 @@ class FlyNotesApp:
         # Separator under header
         tk.Frame(
             self.root,
-            bg=config.separator_color,
-            height=config.separator_height,
+            bg=self._cfg.colors.separator_color,
+            height=self._cfg.settings.separator_height,
             bd=0,
         ).pack(fill="x")
 
         # Footer separator + footer (packed bottom-up)
         self._footer_sep = tk.Frame(
             self.root,
-            bg=config.separator_color,
-            height=config.separator_height,
+            bg=self._cfg.colors.separator_color,
+            height=self._cfg.settings.separator_height,
             bd=0,
         )
 
-        self._footer = FooterBar(self.root, on_clear=self._clear_completed, on_undo=self._undo)
+        self._footer = FooterBar(
+            self.root, self._cfg, on_clear=self._clear_completed, on_undo=self._undo
+        )
 
         # Pack order: footer at bottom, then separator above it
         self._footer.pack(fill="x", side="bottom")
@@ -144,26 +151,27 @@ class FlyNotesApp:
         # Entry
         self._entry_bar = TaskEntryBar(
             self.root,
+            self._cfg,
             on_submit=self._add_new_task,
         )
         # Down from the new-task field jumps into the list.
         self._entry_bar.entry_widget.bind("<Down>", lambda _: self._focus_first_task())
         self._entry_bar.pack(
             fill="x",
-            padx=config.spacing_lg,
-            pady=(config.spacing_md, config.spacing_sm),
+            padx=self._cfg.spacing.lg,
+            pady=(self._cfg.spacing.md, self._cfg.spacing.sm),
         )
 
         # Separator under entry
         tk.Frame(
             self.root,
-            bg=config.separator_color,
-            height=config.separator_height,
+            bg=self._cfg.colors.separator_color,
+            height=self._cfg.settings.separator_height,
             bd=0,
-        ).pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_sm, 0))
+        ).pack(fill="x", padx=self._cfg.spacing.lg, pady=(self._cfg.spacing.sm, 0))
 
         # Task list
-        self._task_list = TaskListView(self.root)
+        self._task_list = TaskListView(self.root, self._cfg)
         self._task_list.pack(fill="both", expand=True)
 
     # ── Events ───────────────────────────────
@@ -177,12 +185,14 @@ class FlyNotesApp:
         self.root.bind("<Map>", lambda _: self._apply_always_on_top())
 
         # Shortcuts
-        self.root.bind(config.shortcut_close, lambda _: self._on_close())
-        self.root.bind(config.shortcut_new_task, lambda _: self._entry_bar.focus_entry())
-        self.root.bind(config.shortcut_delete_completed, lambda _: self._clear_completed())
-        self.root.bind(config.shortcut_undo, lambda _: self._undo())
-        self.root.bind(config.shortcut_edit_task, lambda _: self._edit_current_task())
-        self.root.bind(config.shortcut_toggle_always_on_top, lambda _: self.toggle_always_on_top())
+        self.root.bind(self._cfg.shortcuts.close, lambda _: self._on_close())
+        self.root.bind(self._cfg.shortcuts.new_task, lambda _: self._entry_bar.focus_entry())
+        self.root.bind(self._cfg.shortcuts.delete_completed, lambda _: self._clear_completed())
+        self.root.bind(self._cfg.shortcuts.undo, lambda _: self._undo())
+        self.root.bind(self._cfg.shortcuts.edit_task, lambda _: self._edit_current_task())
+        self.root.bind(
+            self._cfg.shortcuts.toggle_always_on_top, lambda _: self.toggle_always_on_top()
+        )
 
     # ── Single instance ──────────────────────
 
@@ -222,13 +232,15 @@ class FlyNotesApp:
 
     def _on_app_focus_in(self, _event: tk.Event | None = None) -> None:
         self._cancel_fade()
-        self.root.attributes("-alpha", config.active_alpha)
+        self.root.attributes("-alpha", self._cfg.transparency.active)
 
     def _on_app_focus_out(self, _event: tk.Event | None = None) -> None:
         # Focus moving between our own widgets also sends FocusOut (then FocusIn), and a
         # quick click elsewhere shouldn't flash the window: fade only if focus stays away.
         self._cancel_fade()
-        self._fade_after_id = self.root.after(config.inactive_fade_delay_ms, self._fade_if_inactive)
+        self._fade_after_id = self.root.after(
+            self._cfg.settings.inactive_fade_delay_ms, self._fade_if_inactive
+        )
 
     def _fade_if_inactive(self) -> None:
         self._fade_after_id = None
@@ -237,7 +249,7 @@ class FlyNotesApp:
         except (KeyError, tk.TclError):
             focused = None
         if focused is None:
-            self.root.attributes("-alpha", config.inactive_alpha)
+            self.root.attributes("-alpha", self._cfg.transparency.inactive)
 
     def _cancel_fade(self) -> None:
         if self._fade_after_id is not None:
@@ -254,6 +266,7 @@ class FlyNotesApp:
     def _create_task_widget(self, task: Task, index: int | None = None) -> TaskItem:
         widget = TaskItem(
             self._task_list.inner_frame,
+            self._cfg,
             task_id=task.id,
             text=task.text,
             completed=task.completed,
@@ -270,10 +283,10 @@ class FlyNotesApp:
         return widget
 
     def _delete_task(self, item: TaskItem) -> None:
-        if config.confirm_delete:
+        if self._cfg.settings.confirm_delete:
             ok = messagebox.askyesno(
-                config.string("confirm_delete_title"),
-                config.string("confirm_delete_msg"),
+                self._cfg.string("confirm_delete_title"),
+                self._cfg.string("confirm_delete_msg"),
             )
             if not ok:
                 return
@@ -284,7 +297,7 @@ class FlyNotesApp:
             return
         self._task_list.remove_widget(item)
         self._refresh_ui()
-        self._footer.show_undo(config.string("undo_deleted"))
+        self._footer.show_undo(self._cfg.string("undo_deleted"))
         if next_focus is not None:
             self._focus_task(next_focus)
         elif had_focus:
@@ -330,7 +343,10 @@ class FlyNotesApp:
         if not 0 <= target_pos < len(visual):
             return
         target = visual[target_pos]
-        if config.group_completed and target.completed_var.get() != item.completed_var.get():
+        if (
+            self._cfg.settings.group_completed
+            and target.completed_var.get() != item.completed_var.get()
+        ):
             return
         if self._reorder(item, target):
             self._focus_task(item)
@@ -350,7 +366,9 @@ class FlyNotesApp:
 
     def _change_task_text(self, item: TaskItem, text: str) -> str | None:
         """Save an inline edit; return the stored text, or None to keep the old one."""
-        task = self.manager.update_text(item.task_id, text, max_length=config.max_task_length)
+        task = self.manager.update_text(
+            item.task_id, text, max_length=self._cfg.settings.max_task_length
+        )
         return task.text if task else None
 
     def _edit_current_task(self) -> None:
@@ -376,7 +394,7 @@ class FlyNotesApp:
         for w in to_remove:
             self._task_list.remove_widget(w)
         self._refresh_ui()
-        self._footer.show_undo(config.string("undo_cleared", count=count))
+        self._footer.show_undo(self._cfg.string("undo_cleared", count=count))
 
     def _undo(self) -> None:
         """Bring back the most recently deleted or cleared task(s) in place."""
@@ -394,12 +412,12 @@ class FlyNotesApp:
         self._dragging_item = item
         self._drag_start_y = event.y_root
         item.set_drag_active(True)
-        item.set_bg(config.drag_highlight_color)
+        item.set_bg(self._cfg.colors.drag_highlight)
 
     def _stop_reorder(self, item: TaskItem, event: tk.Event) -> None:
         if self._dragging_item:
             self._dragging_item.set_drag_active(False)
-            self._dragging_item.set_bg(config.item_bg)
+            self._dragging_item.set_bg(self._cfg.colors.item_bg)
             self._dragging_item = None
         self._task_list.repack()
 
@@ -413,8 +431,8 @@ class FlyNotesApp:
             visual_completed=[w.completed_var.get() for w in visual],
             dragging_id=item.task_id,
             delta_y=event.y_root - self._drag_start_y,
-            threshold=config.drag_threshold,
-            enforce_group_boundary=config.group_completed,
+            threshold=self._cfg.settings.drag_threshold,
+            enforce_group_boundary=self._cfg.settings.group_completed,
         )
         if target_id is None:
             return
@@ -449,10 +467,12 @@ class FlyNotesApp:
         Deferred so a load error reported while the window is still being
         built (before ``mainloop``) doesn't open a dialog mid-construction.
         """
-        self.root.after(0, lambda: messagebox.showerror(config.string("app_title"), message))
+        self.root.after(0, lambda: messagebox.showerror(self._cfg.string("app_title"), message))
 
     def _restored_geometry(self) -> WindowGeometry:
-        default = WindowGeometry(config.default_width, config.default_height, 100, 100)
+        default = WindowGeometry(
+            self._cfg.settings.default_width, self._cfg.settings.default_height, 100, 100
+        )
         monitors = monitor_work_areas() or [
             Rect(0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
         ]
@@ -460,8 +480,8 @@ class FlyNotesApp:
             load_geometry(self._state_file),
             default,
             monitors,
-            min_width=config.min_width,
-            min_height=config.min_height,
+            min_width=self._cfg.settings.min_width,
+            min_height=self._cfg.settings.min_height,
         )
 
     def _save_window_geometry(self) -> None:

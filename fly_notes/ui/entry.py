@@ -5,7 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from typing import Any
 
-from ..config import config
+from ..config import AppConfig
 
 
 class TaskEntryBar(tk.Frame):
@@ -14,31 +14,33 @@ class TaskEntryBar(tk.Frame):
     def __init__(
         self,
         master: tk.Widget,
+        cfg: AppConfig,
         on_submit: callable,
         **kwargs: Any,
     ) -> None:
+        self._cfg = cfg
         super().__init__(
             master,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             **kwargs,
         )
         self._on_submit = on_submit
-        self._placeholder = config.string("entry_placeholder")
+        self._placeholder = self._cfg.string("entry_placeholder")
 
         self._entry = tk.Entry(
             self,
             bg="#FFFFFF",
-            fg=config.text_placeholder,
-            insertbackground=config.text_primary,
-            font=config.font_body,
+            fg=self._cfg.colors.text_placeholder,
+            insertbackground=self._cfg.colors.text_primary,
+            font=self._cfg.fonts.body,
             bd=0,
             highlightthickness=2,
-            highlightbackground=config.border_color,
-            highlightcolor=config.border_focus,
+            highlightbackground=self._cfg.colors.border_color,
+            highlightcolor=self._cfg.colors.border_focus,
         )
-        self._entry.pack(fill="x", ipady=config.spacing_md)
+        self._entry.pack(fill="x", ipady=self._cfg.spacing.md)
         self._entry.insert(0, self._placeholder)
         self._entry.bind("<FocusIn>", self._focus_in)
         self._entry.bind("<FocusOut>", self._focus_out)
@@ -68,13 +70,13 @@ class TaskEntryBar(tk.Frame):
     def _focus_in(self, event: tk.Event | None = None) -> None:
         if self._entry.get() == self._placeholder:
             self._entry.delete(0, tk.END)
-            self._entry.config(fg=config.text_primary)
+            self._entry.config(fg=self._cfg.colors.text_primary)
 
     def _focus_out(self, event: tk.Event | None = None) -> None:
         if not self._entry.get().strip():
             self._entry.delete(0, tk.END)
             self._entry.insert(0, self._placeholder)
-            self._entry.config(fg=config.text_placeholder)
+            self._entry.config(fg=self._cfg.colors.text_placeholder)
 
     def _cancel(self, event: tk.Event | None = None) -> str:
         """Escape: discard the typed text and leave the field.
@@ -90,5 +92,5 @@ class TaskEntryBar(tk.Frame):
     def _submit(self) -> None:
         text = self.get_text()
         if text:
-            self._on_submit(text[: config.max_task_length])
+            self._on_submit(text[: self._cfg.settings.max_task_length])
             self.clear()
