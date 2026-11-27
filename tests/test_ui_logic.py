@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import tkinter as tk
 import types
 from pathlib import Path
@@ -614,6 +615,114 @@ def test_scroll_region_and_increment_follow_wrapped_rows(root):
         assert scroll_bottom >= task_list.inner_frame.winfo_height()
     finally:
         win.destroy()
+
+
+# ── Undo delete (#9) ─────────────────────────
+
+
+def _app_with_tasks(app_window, tmp_path, monkeypatch, tasks):
+    tasks_file = tmp_path / "tasks.json"
+    tasks_file.write_text(json.dumps(tasks), encoding="utf-8")
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tasks_file))
+    return FlyNotesApp(app_window)
+
+
+def _widget_state(app):
+    return [(w.task_id, w.completed_var.get()) for w in app._task_list.task_widgets]
+
+
+def _model_state(app):
+    return [(t["id"], t["completed"]) for t in app.manager.tasks]
+
+
+SAMPLE_TASKS = [
+    {"id": "a", "text": "A", "completed": False},
+    {"id": "b", "text": "B", "completed": True},
+    {"id": "c", "text": "C", "completed": False},
+    {"id": "d", "text": "D", "completed": True},
+]
+
+
+def test_delete_then_undo_restores_the_same_list_and_order(app_window, tmp_path, monkeypatch):
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        before = _widget_state(app)
+        target = next(w for w in app._task_list.task_widgets if w.task_id == "c")
+
+        app._delete_task(target)
+        assert app._footer.undo_visible
+        assert app._footer._undo_msg.cget("text") == config.string("undo_deleted")
+        assert "c" not in [w.task_id for w in app._task_list.task_widgets]
+
+        app._undo()
+
+        assert _widget_state(app) == before
+        assert _model_state(app) == before
+        assert not app._footer.undo_visible
+    finally:
+        app._on_close()
+
+
+def test_clear_completed_needs_no_dialog_and_can_be_undone(app_window, tmp_path, monkeypatch):
+    from fly_notes import fly_notes_app
+
+    def no_dialogs(*args, **kwargs):
+        raise AssertionError("clear completed must not ask for confirmation")
+
+    monkeypatch.setattr(fly_notes_app.messagebox, "askyesno", no_dialogs)
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        before = _widget_state(app)
+
+        app._clear_completed()
+        assert [w.task_id for w in app._task_list.task_widgets] == ["a", "c"]
+        assert app._footer._undo_msg.cget("text") == config.string("undo_cleared", count=2)
+
+        app._undo()
+        assert _widget_state(app) == before
+        assert _model_state(app) == before
+    finally:
+        app._on_close()
+
+
+def test_undo_shortcut_is_bound_and_noop_without_history(app_window, tmp_path, monkeypatch):
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        assert config.shortcut_undo == "<Control-z>"
+        assert app.root.bind(config.shortcut_undo)
+        before = _widget_state(app)
+        app._undo()
+        assert _widget_state(app) == before
+    finally:
+        app._on_close()
+
+
+def test_undo_notice_hides_itself_after_the_timeout(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "undo_timeout_ms", 10)
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        app._delete_task(app._task_list.task_widgets[0])
+        assert app._footer.undo_visible
+
+        deadline = time.monotonic() + 2
+        while app._footer.undo_visible and time.monotonic() < deadline:
+            app.root.update()
+        assert not app._footer.undo_visible
+        # The undo itself stays available (Ctrl+Z) after the notice is gone.
+        assert app.manager.can_undo
+    finally:
+        app._on_close()
+
+
+def test_clicking_undo_in_the_footer_restores_the_task(app_window, tmp_path, monkeypatch):
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        before = _widget_state(app)
+        app._delete_task(app._task_list.task_widgets[0])
+        app._footer._undo_clicked()
+        assert _widget_state(app) == before
+    finally:
+        app._on_close()
 
 
 # ── Section header hierarchy (issues-v4 #4) ──
