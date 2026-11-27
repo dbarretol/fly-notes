@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   seconds (`settings.undo_timeout_ms`), and `Ctrl+Z` (`shortcuts.undo`) restores the most
   recent deletions, one at a time, at their original position. "Clear completed" can be
   undone the same way. ([#9])
+- Edit a task's text in place: double-click it, or hover it and press `F2`
+  (`shortcuts.edit_task`). `Enter` or clicking elsewhere saves, `Esc` cancels, and empty text
+  keeps the original. Edits use the same length limit as new tasks. ([#10])
 
 ### Changed
 
@@ -22,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Long task text wraps onto several lines and re-wraps when the window is resized, instead of
   being cut off at the window edge. ([#8])
+- Hovering a task could be mistaken for hovering another one whose internal widget name
+  starts the same way (e.g. the 1st and 10th rows). ([#10])
 
 ## [0.1.1] - 2026-11-26
 
@@ -72,3 +77,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#7]: https://github.com/dbarretol/fly-notes/issues/7
 [#8]: https://github.com/dbarretol/fly-notes/issues/8
 [#9]: https://github.com/dbarretol/fly-notes/issues/9
+[#10]: https://github.com/dbarretol/fly-notes/issues/10
