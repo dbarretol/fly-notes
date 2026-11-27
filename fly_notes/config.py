@@ -267,6 +267,9 @@ _CONTRAST_PAIRS: list[tuple[str, str, float]] = [
     ("text_secondary", "content_bg", 4.5),
     ("section_header", "content_bg", 4.5),
     ("text_placeholder", "item_bg", 3.0),
+    ("header_icon", "header_bg", 4.5),
+    ("text_primary", "entry_bg", 4.5),
+    ("text_placeholder", "entry_bg", 3.0),
     ("link_color", "footer_bg", 4.5),
     ("link_color", "content_bg", 4.5),  # "Show N more" link in the task list
     ("empty_state_fg", "content_bg", 3.0),

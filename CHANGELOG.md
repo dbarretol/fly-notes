@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Contrast validation now also covers `header_icon` on `header_bg`, `text_primary` on
+  `entry_bg` and `text_placeholder` on `entry_bg`, matching the keys added in 1.1.0. ([#87])
+
 ## [1.1.0] - 2026-11-27
 
 A visual refresh: Fly Notes now looks like a sticky note, with a matching app icon.
@@ -248,3 +253,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#66]: https://github.com/dbarretol/fly-notes/issues/66
 [#77]: https://github.com/dbarretol/fly-notes/issues/77
 [#79]: https://github.com/dbarretol/fly-notes/issues/79
+[#87]: https://github.com/dbarretol/fly-notes/issues/87
