@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The "+ N more" hint below a long list is now a "Show N more" link (also usable with
-  `Enter`/`Space`) that reveals the hidden tasks, `max_visible_tasks` at a time. `link_color`
-  must now also meet 4.5:1 contrast on `content_bg`. ([#12])
+  `Enter`/`Space`) that reveals the hidden tasks, `max_visible_tasks` at a time. The startup
+  contrast check now also warns when `link_color` is below 4.5:1 on `content_bg`. ([#12])
 - "Clear completed" no longer asks for confirmation, since it can be undone. The
   `confirm_clear_title` and `confirm_clear_msg` strings were removed. ([#9])
 

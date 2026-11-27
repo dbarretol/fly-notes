@@ -9,7 +9,7 @@ reliable minimize/restore using a taskbar proxy window.
 - **Floating & borderless widget** (always on top)
 - **Dynamic transparency** — opaque when focused, translucent when unfocused
 - **Task management**
-  - Add tasks quickly (**type + Enter**)
+  - Add tasks quickly (**type + Enter**); long tasks wrap onto several lines
   - Mark complete (**checkbox + strikethrough**)
   - **Drag-and-drop reorder** (drag the task label)
   - **Edit in place**: double-click a task (or hover it and press `F2`); `Enter` saves,
@@ -62,8 +62,9 @@ syntax (e.g. `"close": "<Control-q>"`).
 
 ### Option A: Run the prebuilt executable
 
-If `dist/FlyNotes.exe` has already been built (see [Build the .exe](#build-the-exe-pyinstaller)),
-just run it directly — no installation required.
+Download `FlyNotes.exe` from the [latest release](https://github.com/dbarretol/fly-notes/releases/latest)
+(or build it yourself, see [Build the .exe](#build-the-exe-pyinstaller)) and run it directly — no
+installation required.
 
 ### Option B: Run from source (uv)
 
@@ -95,11 +96,14 @@ FLY_NOTES/
 │   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
 │   ├── window_state.py        # Remembered window geometry + monitor checks (state.json)
 │   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
-├── tests/                     # pytest suite (task manager, config, UI logic, resize geometry)
+├── tests/                     # pytest suite (task manager, config, paths, window state, UI logic)
 ├── docs/                      # Contributor notes (AGENTS.md: tooling conventions)
+├── .github/                   # CI workflow (ruff + pytest on Windows) and PR template
 ├── config.json                # Optional — your local overrides (not tracked; see below)
 ├── tasks.json                 # Your task data when running from source (not tracked)
 ├── FlyNotes.spec              # PyInstaller build spec
+├── CHANGELOG.md
+├── LICENSE
 └── pyproject.toml
 ```
 
@@ -136,7 +140,7 @@ defaults.
 
 ### Where your data lives
 
-| How you run Fly Notes | `config.json` and `tasks.json` location |
+| How you run Fly Notes | Location of `config.json`, `tasks.json` (+ `.bak`) and `state.json` |
 |---|---|
 | From source (`uv run main.py`) | Project root, next to `main.py` |
 | `FlyNotes.exe` | `%APPDATA%\FlyNotes\` (created on first save) |
@@ -227,6 +231,7 @@ Output: `dist/FlyNotes.exe`
 - **Tkinter** (built-in GUI toolkit)
 - **PyInstaller** (dev-only: packaging into a single executable)
 - **pytest / pytest-cov** (dev-only: test suite)
+- **ruff** (dev-only: lint and format) and **GitHub Actions** (CI on Windows)
 - **Windows integration**: taskbar proxy technique for consistent minimize/restore on
   borderless windows
 
