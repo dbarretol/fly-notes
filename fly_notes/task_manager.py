@@ -109,7 +109,8 @@ class TaskManager:
         with self._lock:
             self._tasks.append(task)
         self._schedule_save()
-        logger.info("Task added: %s (id=%s)", text, task["id"])
+        # Only the id: task text is user content and stays out of the logs.
+        logger.info("Task added: id=%s", task["id"])
         return dict(task)
 
     def delete_task(self, task_id: str) -> Task | None:
@@ -190,6 +191,10 @@ class TaskManager:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     json.dump(snapshot, fh, ensure_ascii=False, indent=2)
+                    # Make sure the bytes are on disk before the rename below,
+                    # so a power loss can't leave a truncated tasks file.
+                    fh.flush()
+                    os.fsync(fh.fileno())
                 self._refresh_backup()
                 os.replace(tmp_path, self.tasks_file)
                 logger.debug("Tasks saved to %s", self.tasks_file)
