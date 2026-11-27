@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   management, window state, single instance). Nothing changes for users. ([#21])
 - Tasks are a typed, immutable `Task` record in the code instead of plain dictionaries.
   The `tasks.json` format is unchanged. ([#20])
+- Saves are scheduled with Tk's `after()` on the UI thread instead of a background
+  `threading.Timer`, so the task store no longer needs a lock. Saving still happens half a
+  second after the last change, and immediately on close. ([#19])
 
 ## [0.2.0] - 2026-11-26
 
@@ -124,5 +127,6 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#14]: https://github.com/dbarretol/fly-notes/issues/14
 [#15]: https://github.com/dbarretol/fly-notes/issues/15
 [#16]: https://github.com/dbarretol/fly-notes/issues/16
+[#19]: https://github.com/dbarretol/fly-notes/issues/19
 [#20]: https://github.com/dbarretol/fly-notes/issues/20
 [#21]: https://github.com/dbarretol/fly-notes/issues/21
