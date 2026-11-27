@@ -296,16 +296,24 @@ class WindowController:
         """Restore main window when the user clicks the taskbar icon."""
         if self._proxy_programmatic or not self._was_minimized:
             return
-        self._was_minimized = False
-        try:
-            self._proxy.withdraw()
-        except tk.TclError:
-            return
+        self.bring_to_front()
+
+    def bring_to_front(self) -> None:
+        """Show the main window (restoring it if minimized) above other windows, focused."""
+        if self._was_minimized:
+            self._was_minimized = False
+            try:
+                self._proxy.withdraw()
+            except tk.TclError:
+                pass
         self.root.deiconify()
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", self.always_on_top)
+        # Briefly topmost so it surfaces even when "always on top" is off.
+        self.root.attributes("-topmost", True)
         self.root.lift()
         self.root.focus_force()
+        if not self.always_on_top:
+            self.root.after_idle(lambda: self.root.attributes("-topmost", self.always_on_top))
 
     def minimize_window(self) -> None:
         """Minimize to taskbar via the proxy window."""

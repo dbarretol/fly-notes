@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Always on top can be switched off and on with the header pin (`▲`/`△`) or `Ctrl+T`
   (`shortcuts.toggle_always_on_top`). The choice is saved in `state.json`; the starting value
   is `settings.always_on_top`. ([#14])
+- Only one copy of Fly Notes runs per tasks file. Launching it again brings the running window
+  to the front (restoring it if minimized) and exits, instead of opening a second copy whose
+  saves would overwrite the first one's. ([#15])
 
 ### Changed
 
@@ -102,3 +105,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#12]: https://github.com/dbarretol/fly-notes/issues/12
 [#13]: https://github.com/dbarretol/fly-notes/issues/13
 [#14]: https://github.com/dbarretol/fly-notes/issues/14
+[#15]: https://github.com/dbarretol/fly-notes/issues/15

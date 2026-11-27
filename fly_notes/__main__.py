@@ -36,17 +36,32 @@ def main() -> None:
     """Application bootstrap."""
     _configure_logging()
     _configure_platform()
-
-    root = tk.Tk()
-    root.withdraw()
+    log = logging.getLogger(__name__)
 
     # Imported only now so that DPI awareness (above) is set before the
     # config module and the UI load, and logging is already configured.
     from fly_notes import __version__
+    from fly_notes.config import config
+    from fly_notes.single_instance import SingleInstance, instance_key
+
+    # One instance per tasks file: a second launch brings the first to the front.
+    guard = SingleInstance(instance_key(config.tasks_file))
+    if not guard.acquire():
+        if guard.notify_existing():
+            log.info("Fly Notes is already running; brought it to the front")
+        else:
+            log.warning("Fly Notes is already running; could not bring it to the front")
+        return
+    atexit.register(guard.release)
+
+    root = tk.Tk()
+    root.withdraw()
+
     from fly_notes.fly_notes_app import FlyNotesApp
 
-    logging.getLogger(__name__).info("Fly Notes %s starting", __version__)
+    log.info("Fly Notes %s starting", __version__)
     app = FlyNotesApp(root)
+    app.listen_for_activation(guard.show_requested)
     # Safety net: persist any change still waiting on the save debounce if the
     # process exits by a path that bypasses the app's close handler.
     atexit.register(app.manager.flush)
