@@ -445,6 +445,12 @@ and that section as notes ([`scripts/release_notes.py`](scripts/release_notes.py
   - a second copy is not prevented.
 
   The task list, dragging and resizing are plain Tk and should still work.
+- **Display scaling is read once, at startup.** Fly Notes is *system DPI aware*: it is sharp on
+  the main display, at its scaling. On a second monitor with a different scaling (for example
+  100 % and 150 %), Windows stretches the window to the right size, so it looks slightly
+  blurry there. Tk 8.6 doesn't rescale a running window when it moves between monitors.
+  Supporting that would mean rebuilding every font and pixel size on each move, so it isn't
+  done. If the main display's scaling changes while Fly Notes is open, restart it.
 - Tasks are stored locally only. There is no sync between machines, although a synced folder
   in [portable mode](#where-your-data-lives) can be used for that.
 
