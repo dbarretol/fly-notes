@@ -13,6 +13,7 @@ def _configure_platform() -> None:
     if sys.platform == "win32":
         try:
             import ctypes
+
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (ImportError, AttributeError, OSError):
             pass
@@ -39,7 +40,7 @@ def main() -> None:
     # no intente operaciones gráficas durante la carga del módulo.
     from fly_notes.fly_notes_app import FlyNotesApp
 
-    app = FlyNotesApp(root)
+    _app = FlyNotesApp(root)  # keep a reference for the lifetime of the mainloop
     root.deiconify()
     root.mainloop()
 
