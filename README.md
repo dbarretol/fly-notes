@@ -29,6 +29,9 @@ reliable minimize/restore using a taskbar proxy window.
 - **Remembers its size and position** between sessions (and falls back to the default
   spot if that position is no longer on any connected monitor)
 - **Reliable minimize/restore on Windows 11**, via a **Taskbar Proxy Window** strategy
+- **Single instance**: launching Fly Notes again while it runs brings the open window to the
+  front (restoring it if minimized) instead of starting a second copy that would overwrite
+  the same `tasks.json`. Copies that use different tasks files can still run side by side
 - **Debounced, atomic persistence** to a local `tasks.json` (survives crashes mid-write)
   - The previous version is kept as `tasks.json.bak`. If `tasks.json` ever becomes
     unreadable, it is moved aside as `tasks.corrupt-<timestamp>.json` (never overwritten)
@@ -110,8 +113,9 @@ FLY_NOTES/
 │   ├── task_item.py           # TaskItem row widget + custom checkbox
 │   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
 │   ├── window_state.py        # Remembered window geometry + monitor checks (state.json)
+│   ├── single_instance.py     # One running copy per tasks file (Windows named mutex)
 │   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
-├── tests/                     # pytest suite (task manager, config, paths, window state, UI logic)
+├── tests/                     # pytest suite (task manager, config, paths, window state, single instance, UI)
 ├── docs/                      # Contributor notes (AGENTS.md: tooling conventions)
 ├── .github/                   # CI workflow (ruff + pytest on Windows) and PR template
 ├── config.json                # Optional — your local overrides (not tracked; see below)
