@@ -29,17 +29,17 @@ from __future__ import annotations
 import logging
 import sys
 import tkinter as tk
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 from .config import ICON_PATH, config
 
 logger = logging.getLogger(__name__)
 
 _CURSOR_MAP = {
-    "n":  "sb_v_double_arrow",
-    "s":  "sb_v_double_arrow",
-    "e":  "sb_h_double_arrow",
-    "w":  "sb_h_double_arrow",
+    "n": "sb_v_double_arrow",
+    "s": "sb_v_double_arrow",
+    "e": "sb_h_double_arrow",
+    "w": "sb_h_double_arrow",
     "ne": "size_ne_sw",
     "nw": "size_nw_se",
     "se": "size_nw_se",
@@ -48,14 +48,14 @@ _CURSOR_MAP = {
 
 # Edge → (dx_sign_for_width, dy_sign_for_height, moves_x, moves_y)
 _EDGE_EFFECTS = {
-    "n":  (False, True,  False, True),
-    "s":  (False, True,  False, False),
-    "e":  (True,  False, False, False),
-    "w":  (True,  False, True,  False),
-    "ne": (True,  True,  False, True),
-    "nw": (True,  True,  True,  True),
-    "se": (True,  True,  False, False),
-    "sw": (True,  True,  True,  False),
+    "n": (False, True, False, True),
+    "s": (False, True, False, False),
+    "e": (True, False, False, False),
+    "w": (True, False, True, False),
+    "ne": (True, True, False, True),
+    "nw": (True, True, True, True),
+    "se": (True, True, False, False),
+    "sw": (True, True, True, False),
 }
 
 
@@ -69,7 +69,7 @@ def compute_resize_geometry(
     start_win_y: int,
     min_width: int,
     min_height: int,
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     """Pure geometry calculation for 8-direction borderless window resize.
 
     Given the drag edge, the pointer displacement since the drag started
@@ -129,7 +129,7 @@ class WindowController:
     def __init__(
         self,
         root: tk.Tk,
-        on_resize_callback: Optional[Callable[[int], None]] = None,
+        on_resize_callback: Callable[[int], None] | None = None,
     ) -> None:
         self._warn_if_unsupported_platform()
         self.root = root
@@ -155,7 +155,7 @@ class WindowController:
         # Taskbar proxy
         self._was_minimized: bool = False
         self._proxy_programmatic: bool = False
-        self._proxy: Optional[tk.Toplevel] = None
+        self._proxy: tk.Toplevel | None = None
         self._setup_taskbar_proxy()
         self._apply_icon()
 
@@ -205,10 +205,10 @@ class WindowController:
 
         g = self._GRIP
         specs = [
-            ("n",  dict(x=0, y=0, relwidth=1.0, height=g)),
-            ("s",  dict(x=0, rely=1.0, y=-g, relwidth=1.0, height=g)),
-            ("e",  dict(rely=0, relx=1.0, x=-g, width=g, relheight=1.0)),
-            ("w",  dict(x=0, y=0, width=g, relheight=1.0)),
+            ("n", dict(x=0, y=0, relwidth=1.0, height=g)),
+            ("s", dict(x=0, rely=1.0, y=-g, relwidth=1.0, height=g)),
+            ("e", dict(rely=0, relx=1.0, x=-g, width=g, relheight=1.0)),
+            ("w", dict(x=0, y=0, width=g, relheight=1.0)),
             ("ne", dict(relx=1.0, x=-g, y=0, width=g, height=g)),
             ("nw", dict(x=0, y=0, width=g, height=g)),
             ("se", dict(relx=1.0, x=-g, rely=1.0, y=-g, width=g, height=g)),
@@ -283,7 +283,7 @@ class WindowController:
         """Handle close from the taskbar proxy — destroy main window."""
         self.root.destroy()
 
-    def _proxy_restore(self, _event: Optional[tk.Event] = None) -> None:
+    def _proxy_restore(self, _event: tk.Event | None = None) -> None:
         """Restore main window when the user clicks the taskbar icon."""
         if self._proxy_programmatic or not self._was_minimized:
             return

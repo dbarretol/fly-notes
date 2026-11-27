@@ -15,11 +15,12 @@ import os
 import tempfile
 import threading
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-Task = Dict[str, Any]
+Task = dict[str, Any]
 
 _MAX_TEXT_LENGTH = 10_000  # Hard safety limit for loaded task text
 
@@ -37,19 +38,19 @@ class TaskManager:
     def __init__(
         self,
         tasks_file: str = "tasks.json",
-        error_callback: Optional[Callable[[str], None]] = None,
+        error_callback: Callable[[str], None] | None = None,
     ) -> None:
         self.tasks_file = tasks_file
         self.error_callback = error_callback
-        self._tasks: List[Task] = []
-        self._save_timer: Optional[threading.Timer] = None
+        self._tasks: list[Task] = []
+        self._save_timer: threading.Timer | None = None
         self._lock = threading.Lock()
         self._load_tasks()
 
     # ── Read access (thread-safe copies) ─────
 
     @property
-    def tasks(self) -> List[Task]:
+    def tasks(self) -> list[Task]:
         """Return a shallow copy of the task list."""
         with self._lock:
             return list(self._tasks)
@@ -69,7 +70,7 @@ class TaskManager:
         with self._lock:
             return len(self._tasks) - sum(1 for t in self._tasks if t["completed"])
 
-    def task_by_id(self, task_id: str) -> Optional[Task]:
+    def task_by_id(self, task_id: str) -> Task | None:
         with self._lock:
             for t in self._tasks:
                 if t["id"] == task_id:
@@ -101,7 +102,7 @@ class TaskManager:
         logger.info("Task added: %s (id=%s)", text, task["id"])
         return dict(task)
 
-    def delete_task(self, task_id: str) -> Optional[Task]:
+    def delete_task(self, task_id: str) -> Task | None:
         with self._lock:
             idx = self._index_of_unlocked(task_id)
             if idx is None:
@@ -112,7 +113,7 @@ class TaskManager:
         logger.info("Task deleted: %s", task_id)
         return removed
 
-    def toggle_task(self, task_id: str) -> Optional[Task]:
+    def toggle_task(self, task_id: str) -> Task | None:
         with self._lock:
             idx = self._index_of_unlocked(task_id)
             if idx is None:
@@ -195,7 +196,7 @@ class TaskManager:
             logger.info("No tasks file at %s — starting fresh", self.tasks_file)
             return
         try:
-            with open(self.tasks_file, "r", encoding="utf-8") as fh:
+            with open(self.tasks_file, encoding="utf-8") as fh:
                 data = json.load(fh)
             if not isinstance(data, list):
                 raise TypeError(f"Expected list, got {type(data).__name__}")
@@ -240,7 +241,7 @@ class TaskManager:
 
     # ── Internal helpers ─────────────────────
 
-    def _index_of_unlocked(self, task_id: str) -> Optional[int]:
+    def _index_of_unlocked(self, task_id: str) -> int | None:
         """Find index of *task_id* WITHOUT acquiring the lock.
 
         Must be called while ``self._lock`` is already held.

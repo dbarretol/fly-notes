@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .config import blend_alpha_hex, config
 from .task_item import TaskItem
 from .task_manager import TaskManager
 from .window_controller import WindowController
-
 
 # ─────────────────────────────────────────────
 # Sub-components extracted from the monolithic class
@@ -24,13 +23,13 @@ from .window_controller import WindowController
 
 
 def compute_reorder_target(
-    visual_ids: List[str],
-    visual_completed: List[bool],
+    visual_ids: list[str],
+    visual_completed: list[bool],
     dragging_id: str,
     delta_y: int,
     threshold: int,
     enforce_group_boundary: bool = True,
-) -> Optional[str]:
+) -> str | None:
     """Pure decision logic for drag-and-drop reordering.
 
     Given the *visually rendered* order of task ids (and their completed
@@ -90,31 +89,43 @@ class HeaderBar(tk.Frame):
 
         # Close
         self._close_btn = tk.Button(
-            self, text=config.string("btn_close"), command=on_close,
-            bg=config.header_bg, fg=config.text_on_header,
-            bd=0, activebackground=config.btn_close_hover_bg,
-            activeforeground="#FFFFFF", padx=config.spacing_lg,
-            font=config.font_header, cursor="hand2", relief="flat",
+            self,
+            text=config.string("btn_close"),
+            command=on_close,
+            bg=config.header_bg,
+            fg=config.text_on_header,
+            bd=0,
+            activebackground=config.btn_close_hover_bg,
+            activeforeground="#FFFFFF",
+            padx=config.spacing_lg,
+            font=config.font_header,
+            cursor="hand2",
+            relief="flat",
         )
         self._close_btn.pack(side="right", fill="y")
         self._close_btn.bind(
-            "<Enter>", lambda e: self._close_btn.config(bg=config.btn_close_hover_bg))
-        self._close_btn.bind(
-            "<Leave>", lambda e: self._close_btn.config(bg=config.header_bg))
+            "<Enter>", lambda e: self._close_btn.config(bg=config.btn_close_hover_bg)
+        )
+        self._close_btn.bind("<Leave>", lambda e: self._close_btn.config(bg=config.header_bg))
 
         # Minimize
         self._min_btn = tk.Button(
-            self, text=config.string("btn_minimize"), command=on_minimize,
-            bg=config.header_bg, fg=config.text_on_header,
-            bd=0, activebackground=config.btn_header_hover_bg,
-            activeforeground="#FFFFFF", padx=config.spacing_lg,
-            font=config.font_header, cursor="hand2", relief="flat",
+            self,
+            text=config.string("btn_minimize"),
+            command=on_minimize,
+            bg=config.header_bg,
+            fg=config.text_on_header,
+            bd=0,
+            activebackground=config.btn_header_hover_bg,
+            activeforeground="#FFFFFF",
+            padx=config.spacing_lg,
+            font=config.font_header,
+            cursor="hand2",
+            relief="flat",
         )
         self._min_btn.pack(side="right", fill="y")
-        self._min_btn.bind(
-            "<Enter>", lambda e: self._min_btn.config(bg=config.btn_header_hover_bg))
-        self._min_btn.bind(
-            "<Leave>", lambda e: self._min_btn.config(bg=config.header_bg))
+        self._min_btn.bind("<Enter>", lambda e: self._min_btn.config(bg=config.btn_header_hover_bg))
+        self._min_btn.bind("<Leave>", lambda e: self._min_btn.config(bg=config.header_bg))
 
     @property
     def draggable_widgets(self) -> list[tk.Widget]:
@@ -142,9 +153,13 @@ class TaskEntryBar(tk.Frame):
         self._placeholder = config.string("entry_placeholder")
 
         self._entry = tk.Entry(
-            self, bg="#FFFFFF", fg=config.text_placeholder,
-            insertbackground=config.text_primary, font=config.font_body,
-            bd=0, highlightthickness=2,
+            self,
+            bg="#FFFFFF",
+            fg=config.text_placeholder,
+            insertbackground=config.text_primary,
+            font=config.font_body,
+            bd=0,
+            highlightthickness=2,
             highlightbackground=config.border_color,
             highlightcolor=config.border_focus,
         )
@@ -174,12 +189,12 @@ class TaskEntryBar(tk.Frame):
 
     # ── Placeholder ──────────────────────────
 
-    def _focus_in(self, event: tk.Event = None) -> None:
+    def _focus_in(self, event: tk.Event | None = None) -> None:
         if self._entry.get() == self._placeholder:
             self._entry.delete(0, tk.END)
             self._entry.config(fg=config.text_primary)
 
-    def _focus_out(self, event: tk.Event = None) -> None:
+    def _focus_out(self, event: tk.Event | None = None) -> None:
         if not self._entry.get().strip():
             self._entry.delete(0, tk.END)
             self._entry.insert(0, self._placeholder)
@@ -213,15 +228,21 @@ class FooterBar(tk.Frame):
         self._on_clear = on_clear
 
         self._badge_label = tk.Label(
-            self, text="", fg=config.text_secondary,
-            bg=config.footer_bg, font=config.font_badge,
+            self,
+            text="",
+            fg=config.text_secondary,
+            bg=config.footer_bg,
+            font=config.font_badge,
         )
         self._badge_label.pack(side="left", padx=config.spacing_lg)
 
         self._clear_btn = tk.Label(
-            self, text=config.string("clear_completed_zero"),
-            fg=config.link_color, bg=config.footer_bg,
-            font=config.font_footer, cursor="hand2",
+            self,
+            text=config.string("clear_completed_zero"),
+            fg=config.link_color,
+            bg=config.footer_bg,
+            font=config.font_footer,
+            cursor="hand2",
         )
         self._clear_btn.bind("<Button-1>", lambda _: self._on_clear())
         self._clear_btn.bind("<Enter>", self._on_hover)
@@ -231,24 +252,20 @@ class FooterBar(tk.Frame):
         if total == 0:
             self._badge_label.config(text="")
         else:
-            self._badge_label.config(
-                text=config.string("badge_format", done=done, total=total)
-            )
+            self._badge_label.config(text=config.string("badge_format", done=done, total=total))
         if done > 0:
-            self._clear_btn.config(
-                text=config.string("clear_completed", count=done)
-            )
+            self._clear_btn.config(text=config.string("clear_completed", count=done))
             self._clear_btn.pack(side="right", padx=config.spacing_lg)
         else:
             self._clear_btn.pack_forget()
 
-    def _on_hover(self, event: tk.Event = None) -> None:
+    def _on_hover(self, event: tk.Event | None = None) -> None:
         self._clear_btn.config(
             fg=config.link_hover,
             font=(*config.font_footer[:2], "underline"),
         )
 
-    def _on_leave(self, event: tk.Event = None) -> None:
+    def _on_leave(self, event: tk.Event | None = None) -> None:
         self._clear_btn.config(fg=config.link_color, font=config.font_footer)
 
 
@@ -264,46 +281,58 @@ class TaskListView(tk.Frame):
             **kwargs,
         )
         self._scrollbar_visible = False
-        self._task_widgets: List[TaskItem] = []
+        self._task_widgets: list[TaskItem] = []
         # Transient widgets (section headers, separators, spacers)
-        self._transient_widgets: List[tk.Widget] = []
+        self._transient_widgets: list[tk.Widget] = []
 
         # Scrollbar
         self._scrollbar = tk.Scrollbar(
-            self, orient="vertical",
+            self,
+            orient="vertical",
             width=config.scrollbar_width,
             troughcolor=config.scrollbar_track,
             bg=config.scrollbar_thumb,
             activebackground=config.scrollbar_thumb,
-            bd=0, highlightthickness=0, relief="flat",
+            bd=0,
+            highlightthickness=0,
+            relief="flat",
         )
 
         # Canvas
         self._canvas = tk.Canvas(
-            self, bg=config.content_bg,
-            highlightthickness=0, bd=0,
+            self,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
             yscrollcommand=self._scrollbar_set,
         )
         self._scrollbar.config(command=self._canvas.yview)
 
         # Inner frame
         self._inner = tk.Frame(
-            self._canvas, bg=config.content_bg,
-            highlightthickness=0, bd=0,
+            self._canvas,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
         )
 
         self._canvas.pack(side="left", fill="both", expand=True)
         self._canvas_win_id = self._canvas.create_window(
-            (0, 0), window=self._inner,
-            anchor="nw", width=config.default_width,
+            (0, 0),
+            window=self._inner,
+            anchor="nw",
+            width=config.default_width,
         )
 
         # "More content below" indicator — shown only while scrolled above
         # the bottom. shadow_color has an alpha channel Tk can't render
         # directly, so it's flattened onto content_bg once at construction.
         self._bottom_shadow = tk.Frame(
-            self, bg=blend_alpha_hex(config.shadow_color, config.content_bg),
-            height=3, bd=0, highlightthickness=0,
+            self,
+            bg=blend_alpha_hex(config.shadow_color, config.content_bg),
+            height=3,
+            bd=0,
+            highlightthickness=0,
         )
         self._bottom_shadow_visible = False
 
@@ -311,8 +340,10 @@ class TaskListView(tk.Frame):
         self._empty_label = tk.Label(
             self._inner,
             text=config.string("empty_state"),
-            fg=config.empty_state_fg, bg=config.content_bg,
-            font=config.font_empty_hint, pady=config.spacing_xxl,
+            fg=config.empty_state_fg,
+            bg=config.content_bg,
+            font=config.font_empty_hint,
+            pady=config.spacing_xxl,
         )
 
         # Mousewheel on canvas & inner frame
@@ -324,11 +355,11 @@ class TaskListView(tk.Frame):
     # ── Public API ───────────────────────────
 
     @property
-    def task_widgets(self) -> List[TaskItem]:
+    def task_widgets(self) -> list[TaskItem]:
         """Return a copy of the insertion-order widget list."""
         return list(self._task_widgets)
 
-    def visual_order(self) -> List[TaskItem]:
+    def visual_order(self) -> list[TaskItem]:
         """Return widgets in the order they are actually rendered.
 
         Mirrors ``_pack_grouped``/``_pack_flat``: when grouping is
@@ -346,7 +377,8 @@ class TaskListView(tk.Frame):
         i = self._task_widgets.index(widget_a)
         j = self._task_widgets.index(widget_b)
         self._task_widgets[i], self._task_widgets[j] = (
-            self._task_widgets[j], self._task_widgets[i],
+            self._task_widgets[j],
+            self._task_widgets[i],
         )
 
     @property
@@ -398,13 +430,17 @@ class TaskListView(tk.Frame):
             # plain text_secondary/footer styling rather than the bold
             # uppercase header treatment (see issues-v4 #4).
             more_label = tk.Label(
-                self._inner, text=config.string("more_hidden", count=hidden_count),
-                fg=config.text_secondary, bg=config.content_bg,
-                font=config.font_footer, anchor="w",
+                self._inner,
+                text=config.string("more_hidden", count=hidden_count),
+                fg=config.text_secondary,
+                bg=config.content_bg,
+                font=config.font_footer,
+                anchor="w",
             )
             self._transient_widgets.append(more_label)
             more_label.pack(
-                fill="x", padx=config.spacing_xl,
+                fill="x",
+                padx=config.spacing_xl,
                 pady=(config.spacing_xs, config.spacing_xs),
             )
 
@@ -422,7 +458,7 @@ class TaskListView(tk.Frame):
 
     # ── Private helpers ──────────────────────
 
-    def _visible_widgets(self) -> Tuple[List[TaskItem], int]:
+    def _visible_widgets(self) -> tuple[list[TaskItem], int]:
         """Cap the rendered widgets at ``config.max_visible_tasks``.
 
         Applied to the *visual* (post-grouping) order, as one combined
@@ -435,17 +471,16 @@ class TaskListView(tk.Frame):
             return visual, 0
         return visual[:limit], len(visual) - limit
 
-    def _pack_grouped(self, visible: List[TaskItem]) -> None:
+    def _pack_grouped(self, visible: list[TaskItem]) -> None:
         visible_set = set(visible)
         pending = [w for w in self._task_widgets if not w.completed_var.get()]
         completed = [w for w in self._task_widgets if w.completed_var.get()]
 
         if pending:
-            header = self._make_section_label(
-                config.string("section_pending", count=len(pending))
-            )
+            header = self._make_section_label(config.string("section_pending", count=len(pending)))
             header.pack(
-                fill="x", padx=config.spacing_xl,
+                fill="x",
+                padx=config.spacing_xl,
                 pady=(config.spacing_md, config.spacing_xs),
             )
         for w in pending:
@@ -455,11 +490,14 @@ class TaskListView(tk.Frame):
         if completed:
             if pending:
                 sep = tk.Frame(
-                    self._inner, bg=config.separator_color,
-                    height=config.separator_height, bd=0,
+                    self._inner,
+                    bg=config.separator_color,
+                    height=config.separator_height,
+                    bd=0,
                 )
                 sep.pack(
-                    fill="x", padx=config.spacing_xl,
+                    fill="x",
+                    padx=config.spacing_xl,
                     pady=(config.spacing_lg, config.spacing_xs),
                 )
                 self._transient_widgets.append(sep)
@@ -468,14 +506,15 @@ class TaskListView(tk.Frame):
                 config.string("section_completed", count=len(completed))
             )
             header.pack(
-                fill="x", padx=config.spacing_xl,
+                fill="x",
+                padx=config.spacing_xl,
                 pady=(config.spacing_xs, config.spacing_xs),
             )
             for w in completed:
                 if w in visible_set:
                     w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
 
-    def _pack_flat(self, visible: List[TaskItem]) -> None:
+    def _pack_flat(self, visible: list[TaskItem]) -> None:
         visible_set = set(visible)
         for w in self._task_widgets:
             if w in visible_set:
@@ -487,9 +526,12 @@ class TaskListView(tk.Frame):
         # font_section and the dedicated section_header colour, it gives
         # section separators more visual weight than the 11pt body text.
         lbl = tk.Label(
-            self._inner, text=text.upper(),
-            fg=config.section_header, bg=config.content_bg,
-            font=config.font_section, anchor="w",
+            self._inner,
+            text=text.upper(),
+            fg=config.section_header,
+            bg=config.content_bg,
+            font=config.font_section,
+            anchor="w",
         )
         self._transient_widgets.append(lbl)
         return lbl
@@ -562,9 +604,7 @@ class FlyNotesApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(config.string("app_title"))
-        self.root.geometry(
-            f"{config.default_width}x{config.default_height}+100+100"
-        )
+        self.root.geometry(f"{config.default_width}x{config.default_height}+100+100")
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
@@ -578,11 +618,12 @@ class FlyNotesApp:
 
         # Window controller
         self.window_ctrl = WindowController(
-            self.root, on_resize_callback=self._on_window_resize,
+            self.root,
+            on_resize_callback=self._on_window_resize,
         )
 
         # Drag state
-        self._dragging_item: Optional[TaskItem] = None
+        self._dragging_item: TaskItem | None = None
         self._drag_start_y: int = 0
 
         self._build_ui()
@@ -605,14 +646,18 @@ class FlyNotesApp:
 
         # Separator under header
         tk.Frame(
-            self.root, bg=config.separator_color,
-            height=config.separator_height, bd=0,
+            self.root,
+            bg=config.separator_color,
+            height=config.separator_height,
+            bd=0,
         ).pack(fill="x")
 
         # Footer separator + footer (packed bottom-up)
         self._footer_sep = tk.Frame(
-            self.root, bg=config.separator_color,
-            height=config.separator_height, bd=0,
+            self.root,
+            bg=config.separator_color,
+            height=config.separator_height,
+            bd=0,
         )
 
         self._footer = FooterBar(self.root, on_clear=self._clear_completed)
@@ -623,17 +668,21 @@ class FlyNotesApp:
 
         # Entry
         self._entry_bar = TaskEntryBar(
-            self.root, on_submit=self._add_new_task,
+            self.root,
+            on_submit=self._add_new_task,
         )
         self._entry_bar.pack(
-            fill="x", padx=config.spacing_lg,
+            fill="x",
+            padx=config.spacing_lg,
             pady=(config.spacing_md, config.spacing_sm),
         )
 
         # Separator under entry
         tk.Frame(
-            self.root, bg=config.separator_color,
-            height=config.separator_height, bd=0,
+            self.root,
+            bg=config.separator_color,
+            height=config.separator_height,
+            bd=0,
         ).pack(fill="x", padx=config.spacing_lg, pady=(config.spacing_sm, 0))
 
         # Task list
@@ -669,7 +718,7 @@ class FlyNotesApp:
         self._create_task_widget(task)
         self._refresh_ui()
 
-    def _create_task_widget(self, task: Dict[str, Any]) -> TaskItem:
+    def _create_task_widget(self, task: dict[str, Any]) -> TaskItem:
         widget = TaskItem(
             self._task_list.inner_frame,
             task_id=task["id"],
@@ -781,9 +830,7 @@ class FlyNotesApp:
 
     def _handle_error_threadsafe(self, message: str) -> None:
         """Schedule error dialog on the main Tkinter thread."""
-        self.root.after(0, lambda: messagebox.showerror(
-            config.string("app_title"), message
-        ))
+        self.root.after(0, lambda: messagebox.showerror(config.string("app_title"), message))
 
     def _on_close(self) -> None:
         try:
