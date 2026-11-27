@@ -3,16 +3,19 @@
 import dataclasses
 import json
 import logging
+import threading
 import time
 import tkinter as tk
 import types
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from fly_notes.model.store import TaskManager
 from fly_notes.platform.window_state import Rect, WindowGeometry
-from fly_notes.ui.app import FlyNotesApp
+from fly_notes.ui import app as fly_notes_app
+from fly_notes.ui.app import FlyNotesApp, TkScheduler
 from fly_notes.ui.task_item import TaskItem
 from fly_notes.ui.task_list import TaskListView
 
@@ -95,7 +98,7 @@ def test_do_reorder_regression_respects_grouping(root, tmp_path, cfg):
     app._dragging_item = widgets["C"]
     app._drag_start_y = 1000
 
-    event = types.SimpleNamespace(y_root=1000 - cfg.settings.drag_threshold - 1)
+    event = cast(tk.Event, types.SimpleNamespace(y_root=1000 - cfg.settings.drag_threshold - 1))
     app._do_reorder(widgets["C"], event)
 
     assert [t.text for t in manager.tasks] == ["C", "A", "B"]
@@ -151,7 +154,6 @@ def test_delete_then_undo_restores_the_same_list_and_order(app_window, tmp_path,
 
 
 def test_clear_completed_needs_no_dialog_and_can_be_undone(app_window, tmp_path, monkeypatch, cfg):
-    from fly_notes.ui import app as fly_notes_app
 
     def no_dialogs(*args, **kwargs):
         raise AssertionError("clear completed must not ask for confirmation")
@@ -220,11 +222,15 @@ def test_inline_edit_is_saved_to_the_model(app_window, tmp_path, monkeypatch, cf
     try:
         item = app._task_list.task_widgets[0]
         item.begin_edit()
-        item._editor.delete(0, tk.END)
-        item._editor.insert(0, "A edited")
+        editor = item._editor
+        assert editor is not None
+        editor.delete(0, tk.END)
+        editor.insert(0, "A edited")
         item.commit_edit()
 
-        assert app.manager.task_by_id("a").text == "A edited"
+        task = app.manager.task_by_id("a")
+        assert task is not None
+        assert task.text == "A edited"
         assert item._label.cget("text") == "A edited"
     finally:
         app._on_close()
@@ -263,7 +269,6 @@ def test_f2_without_a_target_does_nothing(app_window, tmp_path, monkeypatch, cfg
 def test_window_geometry_is_saved_on_close_and_restored(
     app_window, root, tmp_path, monkeypatch, cfg
 ):
-    from fly_notes.ui import app as fly_notes_app
 
     monkeypatch.setattr(fly_notes_app, "monitor_work_areas", lambda: [Rect(0, 0, 1920, 1040)])
     app = FlyNotesApp(app_window, cfg)
@@ -290,7 +295,6 @@ def test_window_geometry_is_saved_on_close_and_restored(
 
 
 def test_off_screen_saved_geometry_opens_at_the_default(app_window, tmp_path, monkeypatch, cfg):
-    from fly_notes.ui import app as fly_notes_app
 
     monkeypatch.setattr(fly_notes_app, "monitor_work_areas", lambda: [Rect(0, 0, 1920, 1040)])
     (tmp_path / "state.json").write_text(
@@ -307,7 +311,6 @@ def test_off_screen_saved_geometry_opens_at_the_default(app_window, tmp_path, mo
 
 
 def test_failing_to_save_geometry_still_closes(app_window, tmp_path, monkeypatch, caplog, cfg):
-    from fly_notes.ui import app as fly_notes_app
 
     def boom(*args):
         raise OSError("read-only")
@@ -607,7 +610,6 @@ def test_closing_from_taskbar_flushes_pending_save(app_window, tmp_path, monkeyp
 
 
 def test_app_saves_through_tk_after_on_the_main_thread(app_window, tmp_path, monkeypatch, cfg):
-    import threading
 
     tasks_file = tmp_path / "tasks.json"
     app = FlyNotesApp(app_window, cfg)
@@ -628,7 +630,6 @@ def test_app_saves_through_tk_after_on_the_main_thread(app_window, tmp_path, mon
 
 
 def test_tk_scheduler_cancel_survives_a_destroyed_window(root):
-    from fly_notes.ui.app import TkScheduler
 
     win = tk.Toplevel(root)
     scheduler = TkScheduler(win)

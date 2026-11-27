@@ -5,6 +5,7 @@ import threading
 
 import pytest
 
+from fly_notes.model import store
 from fly_notes.model.store import TaskManager
 from fly_notes.model.task import Task
 
@@ -76,6 +77,7 @@ def test_task_by_id(temp_tasks_file):
     tm = TaskManager(tasks_file=temp_tasks_file)
     t1 = tm.add_task("A")
     found = tm.task_by_id(t1.id)
+    assert found is not None
     assert found.text == "A"
     assert tm.task_by_id("invalid") is None
 
@@ -215,13 +217,12 @@ def test_task_text_is_not_logged(temp_tasks_file, caplog):
 
 
 def test_save_fsyncs_before_replacing_the_file(temp_tasks_file, monkeypatch):
-    import fly_notes.model.store as tm_module
 
     events = []
-    real_fsync, real_replace = tm_module.os.fsync, tm_module.os.replace
-    monkeypatch.setattr(tm_module.os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd)))
+    real_fsync, real_replace = store.os.fsync, store.os.replace
+    monkeypatch.setattr(store.os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd)))
     monkeypatch.setattr(
-        tm_module.os, "replace", lambda a, b: (events.append("replace"), real_replace(a, b))
+        store.os, "replace", lambda a, b: (events.append("replace"), real_replace(a, b))
     )
 
     tm = TaskManager(tasks_file=temp_tasks_file)
@@ -314,17 +315,16 @@ def test_undo_is_persisted(temp_tasks_file):
 
 
 def test_undo_history_is_bounded(temp_tasks_file):
-    from fly_notes.model import store as task_manager
 
     tm = TaskManager(tasks_file=temp_tasks_file)
-    ids = [tm.add_task(str(i)).id for i in range(task_manager._UNDO_LIMIT + 5)]
+    ids = [tm.add_task(str(i)).id for i in range(store._UNDO_LIMIT + 5)]
     for task_id in ids:
         tm.delete_task(task_id)
 
     undone = 0
     while tm.undo():
         undone += 1
-    assert undone == task_manager._UNDO_LIMIT
+    assert undone == store._UNDO_LIMIT
 
 
 # ── Inline edit (#10) ────────────────────────
@@ -359,6 +359,7 @@ def test_update_text_applies_the_same_length_limit_as_new_tasks(temp_tasks_file)
 
     updated = tm.update_text(a.id, "x" * 500, max_length=300)
 
+    assert updated is not None
     assert len(updated.text) == 300
 
 
