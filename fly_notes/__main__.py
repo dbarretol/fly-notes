@@ -42,7 +42,7 @@ def main() -> None:
     # config module and the UI load, and logging is already configured.
     from fly_notes import __version__
     from fly_notes.config import config
-    from fly_notes.single_instance import SingleInstance, instance_key
+    from fly_notes.platform.single_instance import SingleInstance, instance_key
 
     # One instance per tasks file: a second launch brings the first to the front.
     guard = SingleInstance(instance_key(config.tasks_file))
@@ -57,7 +57,7 @@ def main() -> None:
     root = tk.Tk()
     root.withdraw()
 
-    from fly_notes.fly_notes_app import FlyNotesApp
+    from fly_notes.ui.app import FlyNotesApp
 
     log.info("Fly Notes %s starting", __version__)
     app = FlyNotesApp(root)

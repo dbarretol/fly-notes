@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-from fly_notes.task_manager import TaskManager
+from fly_notes.model.store import TaskManager
 
 
 @pytest.fixture
@@ -220,7 +220,7 @@ def test_backup_holds_previous_version(tmp_path):
 
 def test_task_text_is_not_logged(temp_tasks_file, caplog):
     tm = TaskManager(tasks_file=temp_tasks_file)
-    with caplog.at_level(logging.DEBUG, logger="fly_notes.task_manager"):
+    with caplog.at_level(logging.DEBUG, logger="fly_notes.model.store"):
         task = tm.add_task("call the dentist about the results")
         tm.flush()
     assert "dentist" not in caplog.text
@@ -228,7 +228,7 @@ def test_task_text_is_not_logged(temp_tasks_file, caplog):
 
 
 def test_save_fsyncs_before_replacing_the_file(temp_tasks_file, monkeypatch):
-    import fly_notes.task_manager as tm_module
+    import fly_notes.model.store as tm_module
 
     events = []
     real_fsync, real_replace = tm_module.os.fsync, tm_module.os.replace
@@ -327,7 +327,7 @@ def test_undo_is_persisted(temp_tasks_file):
 
 
 def test_undo_history_is_bounded(temp_tasks_file):
-    from fly_notes import task_manager
+    from fly_notes.model import store as task_manager
 
     tm = TaskManager(tasks_file=temp_tasks_file)
     ids = [tm.add_task(str(i))["id"] for i in range(task_manager._UNDO_LIMIT + 5)]

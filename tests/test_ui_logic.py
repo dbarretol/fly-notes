@@ -7,19 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from fly_notes import window_controller as window_controller_module
 from fly_notes.config import ICON_PATH, config
-from fly_notes.fly_notes_app import (
-    FlyNotesApp,
-    TaskEntryBar,
-    TaskListView,
-    blend_alpha_hex,
-    compute_reorder_target,
-)
-from fly_notes.task_item import TaskItem
-from fly_notes.task_manager import TaskManager
-from fly_notes.window_controller import WindowController
-from fly_notes.window_state import Rect, WindowGeometry
+from fly_notes.model.reorder import compute_reorder_target
+from fly_notes.model.store import TaskManager
+from fly_notes.platform import window_controller as window_controller_module
+from fly_notes.platform.window_controller import WindowController
+from fly_notes.platform.window_state import Rect, WindowGeometry
+from fly_notes.ui.app import FlyNotesApp
+from fly_notes.ui.drawing import blend_alpha_hex
+from fly_notes.ui.entry import TaskEntryBar
+from fly_notes.ui.task_item import TaskItem
+from fly_notes.ui.task_list import TaskListView
 
 
 @pytest.fixture(scope="session")
@@ -57,7 +55,7 @@ def test_close_logs_save_failure_and_still_closes(app_window, tmp_path, monkeypa
         raise OSError("disk full")
 
     monkeypatch.setattr(app.manager, "flush", boom)
-    with caplog.at_level(logging.ERROR, logger="fly_notes.fly_notes_app"):
+    with caplog.at_level(logging.ERROR, logger="fly_notes.ui.app"):
         app._on_close()
 
     assert "Could not save tasks while closing" in caplog.text
@@ -665,7 +663,7 @@ def test_delete_then_undo_restores_the_same_list_and_order(app_window, tmp_path,
 
 
 def test_clear_completed_needs_no_dialog_and_can_be_undone(app_window, tmp_path, monkeypatch):
-    from fly_notes import fly_notes_app
+    from fly_notes.ui import app as fly_notes_app
 
     def no_dialogs(*args, **kwargs):
         raise AssertionError("clear completed must not ask for confirmation")
@@ -892,7 +890,7 @@ def test_f2_without_a_target_does_nothing(app_window, tmp_path, monkeypatch):
 
 
 def test_window_geometry_is_saved_on_close_and_restored(app_window, root, tmp_path, monkeypatch):
-    from fly_notes import fly_notes_app
+    from fly_notes.ui import app as fly_notes_app
 
     monkeypatch.setattr(fly_notes_app, "monitor_work_areas", lambda: [Rect(0, 0, 1920, 1040)])
     monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
@@ -920,7 +918,7 @@ def test_window_geometry_is_saved_on_close_and_restored(app_window, root, tmp_pa
 
 
 def test_off_screen_saved_geometry_opens_at_the_default(app_window, tmp_path, monkeypatch):
-    from fly_notes import fly_notes_app
+    from fly_notes.ui import app as fly_notes_app
 
     monkeypatch.setattr(fly_notes_app, "monitor_work_areas", lambda: [Rect(0, 0, 1920, 1040)])
     monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
@@ -938,7 +936,7 @@ def test_off_screen_saved_geometry_opens_at_the_default(app_window, tmp_path, mo
 
 
 def test_failing_to_save_geometry_still_closes(app_window, tmp_path, monkeypatch, caplog):
-    from fly_notes import fly_notes_app
+    from fly_notes.ui import app as fly_notes_app
 
     def boom(*args):
         raise OSError("read-only")
@@ -946,7 +944,7 @@ def test_failing_to_save_geometry_still_closes(app_window, tmp_path, monkeypatch
     monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
     monkeypatch.setattr(fly_notes_app, "save_geometry", boom)
     app = FlyNotesApp(app_window)
-    with caplog.at_level(logging.ERROR, logger="fly_notes.fly_notes_app"):
+    with caplog.at_level(logging.ERROR, logger="fly_notes.ui.app"):
         app._on_close()
 
     assert "Could not save the window position" in caplog.text

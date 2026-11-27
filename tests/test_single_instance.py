@@ -3,8 +3,8 @@ import uuid
 
 import pytest
 
-from fly_notes import single_instance
-from fly_notes.single_instance import SingleInstance, instance_key
+from fly_notes.platform import single_instance
+from fly_notes.platform.single_instance import SingleInstance, instance_key
 
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="named mutex is Windows-only")
 

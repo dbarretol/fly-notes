@@ -5,7 +5,7 @@ run without a real display/``tk.Tk()`` — unlike the rest of
 WindowController, which drives real Tk windows and taskbar proxies.
 """
 
-from fly_notes.window_controller import compute_resize_geometry
+from fly_notes.platform.window_controller import compute_resize_geometry
 
 START = dict(start_w=300, start_h=400, start_win_x=100, start_win_y=50)
 MIN = dict(min_width=240, min_height=180)
