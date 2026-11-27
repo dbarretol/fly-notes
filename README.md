@@ -15,7 +15,7 @@ dependencies, and ships as a single `.exe`.
 
 <p align="center">
   <img src="docs/images/fly-notes.png" width="330"
-       alt="Fly Notes window: a header with the always-on-top pin, the new-task field, a To Do section with four tasks (one wrapping onto two lines), a Completed section with two struck-through tasks, and a footer reading '2 of 6 done' with a 'Clear completed (2)' link">
+       alt="Fly Notes window, pale yellow like a sticky note: a header with the always-on-top pin, the new-task field, a To Do section with four tasks (one wrapping onto two lines), a Completed section with two struck-through tasks, and a footer reading '2 of 6 done' with a 'Clear completed (2)' link">
 </p>
 
 ## Contents
@@ -68,7 +68,8 @@ dependencies, and ships as a single `.exe`.
 
 **Configurable**
 
-- A light theme by default and an optional [dark theme](#dark-theme).
+- A sticky-note look by default (pale yellow, flat task rows) and an optional
+  [dark theme](#dark-theme).
 - Colors, transparency, spacing, fonts, shortcuts, behavior and every UI string can be
   overridden with an optional `config.json`.
 
@@ -163,13 +164,13 @@ Fly Notes works out of the box. To customize it, create a `config.json` in the
 [data folder](#where-your-data-lives) containing **only the keys you want to change**.
 Everything else keeps its default.
 
-Example: a green header and a larger default window.
+Example: a blue accent (focus ring and links) and a larger default window.
 
 ```json
 {
   "colors": {
-    "header_bg": "#2D6A4F",
-    "border_focus": "#2D6A4F"
+    "border_focus": "#1F5FAD",
+    "link_color": "#1F5FAD"
   },
   "settings": {
     "default_width": 360,
@@ -182,9 +183,9 @@ Example: a green header and a larger default window.
 |---|---|---|
 | `colors` | Every color in the UI | `header_bg`, `content_bg`, `border_focus`, `link_color` |
 | `transparency` | Window opacity, `0.0`–`1.0` | `active` (focused, default `1.0`), `inactive` (default `0.75`) |
-| `settings` | Sizes and behavior | `theme`, `default_width`, `always_on_top`, `max_visible_tasks`, `undo_timeout_ms`, `group_completed`, `tasks_file` |
+| `settings` | Sizes and behavior | `theme`, `default_width`, `always_on_top`, `max_visible_tasks`, `undo_timeout_ms`, `group_completed`, `checkbox_round`, `tasks_file` |
 | `spacing` | Paddings and gaps | `sm`, `md`, `lg` |
-| `fonts` | `[family, size, style…]` per text role | `body`, `header`, `section` |
+| `fonts` | `[family, size, style…]` per text role (Segoe UI Variable, or Segoe UI where it is not installed) | `body`, `header`, `section` |
 | `shortcuts` | Window-wide key bindings (Tk syntax) | `new_task`, `undo`, `toggle_always_on_top`, `close` |
 | `strings` | Every UI text, for rewording or translating | `entry_placeholder`, `empty_state`, `undo_action` |
 
@@ -207,12 +208,31 @@ Colors you set in `colors` still win over the preset, so you can change a few of
 ```json
 {
   "settings": { "theme": "dark" },
-  "colors": { "header_bg": "#2D6A4F", "border_focus": "#52B788" }
+  "colors": { "border_focus": "#7FB3E8", "link_color": "#7FB3E8" }
 }
 ```
 
 Both presets pass the same contrast checks. The theme is read at startup, so restart Fly Notes
 after changing it.
+
+If you give the header its own color with `header_bg`, set `text_on_header` (the title) and
+`header_icon` (the pin, minimize and close buttons) to match: by default they are dark, for the
+light header.
+
+### Card borders
+
+Task rows are flat: `item_border` has the same color as `item_bg`, so no border is drawn. Give
+`item_border` its own color to put each task in a card, and optionally a different `item_bg`
+and a larger corner radius:
+
+```json
+{
+  "colors": { "item_bg": "#FFFCE6", "item_bg_completed": "#FFFCE6", "item_border": "#EEDF94" },
+  "settings": { "border_radius": 6, "item_padding_y": 7 }
+}
+```
+
+Set `settings.checkbox_round` to `false` for square checkboxes.
 
 A mistake can't break the app:
 
@@ -378,11 +398,12 @@ fly-notes/
 │       ├── window_state.py    # state.json: geometry, always on top, monitor checks
 │       └── single_instance.py # One running copy per tasks file (Windows named mutex)
 ├── tests/                     # pytest suite, one file per module; shared fixtures in conftest.py
-├── assets/                    # Window icon
+├── assets/                    # App icon (window, taskbar and .exe)
 ├── docs/images/               # README screenshot
 ├── AGENTS.md                  # Notes for coding agents and contributors
 ├── .github/                   # CI and release workflows, Dependabot, PR template
 ├── scripts/release_notes.py   # Release notes from CHANGELOG.md (used by the release workflow)
+├── scripts/make_icon.ps1      # Draws assets/fly_notes.ico (16–256 px)
 ├── FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
 ├── LICENSE

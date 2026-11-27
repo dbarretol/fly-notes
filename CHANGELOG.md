@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-27
+
+A visual refresh: Fly Notes now looks like a sticky note, with a matching app icon.
+`tasks.json` and `state.json` need no changes. If your `config.json` sets `header_bg`, see the
+note under Changed.
+
+### Added
+
+- New color keys `item_border`, `entry_bg`, `entry_border`, `window_border` and `header_icon`,
+  and the `settings.checkbox_round` switch (round by default). ([#77])
+
+### Changed
+
+- New default look, like a sticky note: a pale-yellow window with flat task rows (no card
+  border or shadow), the header blended into the window with muted icons, a thin window
+  border, muted section titles, round checkboxes with a green check mark, and Segoe UI
+  Variable where it is installed. Completed tasks are only dimmed and struck through. The
+  dark theme follows the same layout. Card borders can be turned back on with `item_border`
+  in `config.json`. ([#77])
+- If your `config.json` sets `header_bg`, also set `text_on_header` and `header_icon`: the
+  header text and buttons are now dark by default. ([#77])
+- New app icon to match: a yellow sticky note with a green check mark, sharp from 16 to 256 px
+  (the old one stopped at 64 px). `scripts/make_icon.ps1` regenerates it. ([#79])
+
 ## [1.0.0] - 2026-11-27
 
 First stable release. It adds an optional dark theme, and releases are now built and published
@@ -185,7 +209,8 @@ the packaged `FlyNotes.exe`.
 Initial version: floating, always-on-top task widget with drag-to-reorder, grouping of
 completed tasks, configurable theme and taskbar-friendly minimize/restore.
 
-[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/dbarretol/fly-notes/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/dbarretol/fly-notes/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dbarretol/fly-notes/compare/v0.1.1...v0.2.0
@@ -221,3 +246,5 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#32]: https://github.com/dbarretol/fly-notes/issues/32
 [#65]: https://github.com/dbarretol/fly-notes/issues/65
 [#66]: https://github.com/dbarretol/fly-notes/issues/66
+[#77]: https://github.com/dbarretol/fly-notes/issues/77
+[#79]: https://github.com/dbarretol/fly-notes/issues/79

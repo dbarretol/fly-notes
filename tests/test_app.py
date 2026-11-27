@@ -686,3 +686,9 @@ def test_moving_the_last_shown_row_past_the_cap(app_window, cfg):
 
     assert [t.id for t in app.manager.tasks if not t.completed] == ["0", "2", "6", "4", "8"]
     assert [w.task_id for w in app._task_list.packed_order()] == ["0", "2", "6"]
+
+
+def test_window_has_a_thin_border_in_window_border(app_window, cfg):
+    FlyNotesApp(app_window, cfg)
+    assert int(app_window.cget("highlightthickness")) == 1
+    assert app_window.cget("highlightbackground") == cfg.colors.window_border

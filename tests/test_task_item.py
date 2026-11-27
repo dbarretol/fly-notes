@@ -1,5 +1,6 @@
 """TaskItem: one task row (card, wrapping, inline edit, focus ring)."""
 
+import dataclasses
 import tkinter as tk
 import types
 from typing import cast
@@ -524,6 +525,39 @@ def test_inline_editor_background_follows_the_theme(root, tmp_path):
     win, item = _editable_item(root, dark)
     try:
         item.begin_edit()
-        assert _editor(item).cget("bg") == dark.colors.item_bg
+        assert _editor(item).cget("bg") == dark.colors.entry_bg
+    finally:
+        win.destroy()
+
+
+# ── Flat rows and optional card border (#77) ───
+
+
+def _card_outlines(item):
+    return {
+        item._card_canvas.itemcget(i, "outline") for i in item._card_canvas.find_withtag("card")
+    }
+
+
+def test_rows_are_flat_when_item_border_matches_item_bg(root, cfg):
+    assert cfg.colors.item_border == cfg.colors.item_bg
+    win, item = _editable_item(root, cfg)
+    try:
+        assert cfg.colors.item_bg in _card_outlines(item)
+        item._on_enter()
+        # The outline follows the hover fill: still no visible border.
+        assert cfg.colors.drag_highlight in _card_outlines(item)
+        assert cfg.colors.item_bg not in _card_outlines(item) - {item._shadow_fill}
+    finally:
+        win.destroy()
+
+
+def test_a_different_item_border_draws_a_card_border(root, cfg):
+    boxed = dataclasses.replace(cfg, colors=dataclasses.replace(cfg.colors, item_border="#123456"))
+    win, item = _editable_item(root, boxed)
+    try:
+        assert "#123456" in _card_outlines(item)
+        item._on_enter()
+        assert "#123456" in _card_outlines(item)
     finally:
         win.destroy()

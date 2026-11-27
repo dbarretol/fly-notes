@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import tkinter as tk
 from collections.abc import Callable
+from tkinter import font as tkfont
 from tkinter import messagebox
 
 from ..config import DEFAULT_CONFIG, AppConfig
@@ -61,11 +62,18 @@ class FlyNotesApp:
     """Top-level controller for the Fly Notes application."""
 
     def __init__(self, root: tk.Tk | tk.Toplevel, cfg: AppConfig) -> None:
-        self._cfg = cfg
+        # Segoe UI Variable is Windows 11 only: fall back where it is missing.
+        self._cfg = cfg = cfg.with_available_fonts(set(tkfont.families(root)))
         self.root = root
         self.root.title(self._cfg.string("app_title"))
         self.root.overrideredirect(True)
-        self.root.config(bg=self._cfg.colors.content_bg, highlightthickness=0, bd=0)
+        self.root.config(
+            bg=self._cfg.colors.content_bg,
+            highlightthickness=1,
+            highlightbackground=self._cfg.colors.window_border,
+            highlightcolor=self._cfg.colors.window_border,
+            bd=0,
+        )
         self.root.attributes("-alpha", self._cfg.transparency.active)
         self._fade_after_id: str | None = None
         self._activation_after_id: str | None = None

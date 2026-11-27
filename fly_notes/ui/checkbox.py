@@ -12,7 +12,7 @@ class CustomCheckbox(tk.Canvas):
     """
     Canvas-drawn checkbox — consistent across all platforms.
 
-    Draws a rounded-rect box with checkmark. Supports hover feedback
+    Draws a circle (``round_box``) or a rounded-rect box, with a checkmark. Supports hover feedback
     and checked/unchecked states with distinct visual treatment.
     """
 
@@ -27,6 +27,7 @@ class CustomCheckbox(tk.Canvas):
         border_color: str = "#B0977A",
         hover_color: str = "#FFF0E0",
         box_color: str = "#FFFFFF",
+        round_box: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -48,6 +49,7 @@ class CustomCheckbox(tk.Canvas):
         self._hover_color = hover_color
         self._box_color = box_color
         self._is_hovered = False
+        self._round = round_box
 
         # Pre-compute geometry constants
         self._pad = 2
@@ -106,7 +108,10 @@ class CustomCheckbox(tk.Canvas):
             outline = self._border_color
             border_w = 1.5
 
-        draw_rounded_rect(self, pad, pad, s - pad, s - pad, r, fill, outline, border_w)
+        if self._round:
+            self.create_oval(pad, pad, s - pad, s - pad, fill=fill, outline=outline, width=border_w)
+        else:
+            draw_rounded_rect(self, pad, pad, s - pad, s - pad, r, fill, outline, border_w)
 
         # Checkmark
         if self._checked:

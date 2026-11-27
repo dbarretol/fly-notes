@@ -26,5 +26,5 @@ def test_entry_background_follows_the_theme(root, tmp_path):
     dark = default_config(tasks_file=tmp_path / "tasks.json", theme="dark")
     bar = TaskEntryBar(root, dark, on_submit=lambda _text: None)
 
-    assert bar.entry_widget.cget("bg") == dark.colors.item_bg
+    assert bar.entry_widget.cget("bg") == dark.colors.entry_bg
     bar.destroy()

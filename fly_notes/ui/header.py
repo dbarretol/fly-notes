@@ -48,7 +48,7 @@ class HeaderBar(tk.Frame):
             text=self._cfg.string("btn_close"),
             command=on_close,
             bg=self._cfg.colors.header_bg,
-            fg=self._cfg.colors.text_on_header,
+            fg=self._cfg.colors.header_icon,
             bd=0,
             activebackground=self._cfg.colors.btn_close_hover_bg,
             activeforeground="#FFFFFF",
@@ -59,10 +59,14 @@ class HeaderBar(tk.Frame):
         )
         self._close_btn.pack(side="right", fill="y")
         self._close_btn.bind(
-            "<Enter>", lambda e: self._close_btn.config(bg=self._cfg.colors.btn_close_hover_bg)
+            "<Enter>",
+            lambda e: self._close_btn.config(bg=self._cfg.colors.btn_close_hover_bg, fg="#FFFFFF"),
         )
         self._close_btn.bind(
-            "<Leave>", lambda e: self._close_btn.config(bg=self._cfg.colors.header_bg)
+            "<Leave>",
+            lambda e: self._close_btn.config(
+                bg=self._cfg.colors.header_bg, fg=self._cfg.colors.header_icon
+            ),
         )
 
         # Minimize
@@ -71,10 +75,10 @@ class HeaderBar(tk.Frame):
             text=self._cfg.string("btn_minimize"),
             command=on_minimize,
             bg=self._cfg.colors.header_bg,
-            fg=self._cfg.colors.text_on_header,
+            fg=self._cfg.colors.header_icon,
             bd=0,
             activebackground=self._cfg.colors.btn_header_hover_bg,
-            activeforeground="#FFFFFF",
+            activeforeground=self._cfg.colors.header_icon,
             padx=self._cfg.spacing.lg,
             font=self._cfg.fonts.header,
             cursor="hand2",
@@ -91,10 +95,10 @@ class HeaderBar(tk.Frame):
             self,
             command=on_toggle_pin or "",
             bg=self._cfg.colors.header_bg,
-            fg=self._cfg.colors.text_on_header,
+            fg=self._cfg.colors.header_icon,
             bd=0,
             activebackground=self._cfg.colors.btn_header_hover_bg,
-            activeforeground="#FFFFFF",
+            activeforeground=self._cfg.colors.header_icon,
             padx=self._cfg.spacing.md,
             font=self._cfg.fonts.header,
             cursor="hand2",
