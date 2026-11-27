@@ -800,6 +800,7 @@ class FlyNotesApp:
         self.root.bind(config.shortcut_new_task, lambda _: self._entry_bar.focus_entry())
         self.root.bind(config.shortcut_delete_completed, lambda _: self._clear_completed())
         self.root.bind(config.shortcut_undo, lambda _: self._undo())
+        self.root.bind(config.shortcut_edit_task, lambda _: self._edit_current_task())
 
     # ── Task CRUD ────────────────────────────
 
@@ -819,6 +820,7 @@ class FlyNotesApp:
             on_drag_start=self._start_reorder,
             on_drag_do=self._do_reorder,
             on_drag_stop=self._stop_reorder,
+            on_text_change=self._change_task_text,
         )
         self._task_list.add_widget(widget, index=index)
         return widget
@@ -836,6 +838,21 @@ class FlyNotesApp:
         self._task_list.remove_widget(item)
         self._refresh_ui()
         self._footer.show_undo(config.string("undo_deleted"))
+
+    def _change_task_text(self, item: TaskItem, text: str) -> str | None:
+        """Save an inline edit; return the stored text, or None to keep the old one."""
+        task = self.manager.update_text(item.task_id, text, max_length=config.max_task_length)
+        return task["text"] if task else None
+
+    def _edit_current_task(self) -> None:
+        """F2: edit the task with keyboard focus, else the one under the pointer."""
+        focused = self.root.focus_get()
+        widgets = self._task_list.task_widgets
+        target = next((w for w in widgets if w.contains(focused)), None) or next(
+            (w for w in widgets if w.is_hovered), None
+        )
+        if target is not None and target.winfo_ismapped():
+            target.begin_edit()
 
     def _toggle_task(self, item: TaskItem) -> None:
         self.manager.toggle_task(item.task_id)

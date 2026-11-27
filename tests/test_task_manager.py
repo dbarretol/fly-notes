@@ -338,3 +338,47 @@ def test_undo_history_is_bounded(temp_tasks_file):
     while tm.undo():
         undone += 1
     assert undone == task_manager._UNDO_LIMIT
+
+
+# ── Inline edit (#10) ────────────────────────
+
+
+def test_update_text_replaces_text_and_keeps_id_status_and_order(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a = tm.add_task("first")
+    b = tm.add_task("secnod")
+    tm.toggle_task(b["id"])
+
+    updated = tm.update_text(b["id"], "  second  ")
+
+    assert updated == {"id": b["id"], "text": "second", "completed": True}
+    assert [t["text"] for t in tm.tasks] == ["first", "second"]
+    assert tm.tasks[0]["id"] == a["id"]
+
+
+def test_update_text_rejects_empty_unchanged_and_unknown(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a = tm.add_task("keep")
+
+    assert tm.update_text(a["id"], "   ") is None
+    assert tm.update_text(a["id"], "keep") is None
+    assert tm.update_text("missing", "x") is None
+    assert tm.tasks[0]["text"] == "keep"
+
+
+def test_update_text_applies_the_same_length_limit_as_new_tasks(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a = tm.add_task("short")
+
+    updated = tm.update_text(a["id"], "x" * 500, max_length=300)
+
+    assert len(updated["text"]) == 300
+
+
+def test_update_text_is_persisted(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a = tm.add_task("typo")
+    tm.update_text(a["id"], "fixed")
+    tm.flush()
+
+    assert [t["text"] for t in TaskManager(tasks_file=temp_tasks_file).tasks] == ["fixed"]

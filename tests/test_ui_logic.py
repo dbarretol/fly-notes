@@ -725,6 +725,168 @@ def test_clicking_undo_in_the_footer_restores_the_task(app_window, tmp_path, mon
         app._on_close()
 
 
+# ── Inline edit (#10) ────────────────────────
+
+
+def _editable_item(root, text="Original", on_text_change=None):
+    win = tk.Toplevel(root)
+    win.geometry("320x120+0+0")
+    item = TaskItem(win, task_id="1", text=text, on_text_change=on_text_change)
+    item.pack(fill="x")
+    win.update()
+    return win, item
+
+
+def test_begin_edit_swaps_label_for_entry_with_the_task_text(root):
+    win, item = _editable_item(root)
+    try:
+        item.begin_edit()
+        assert item.is_editing
+        assert item._editor.get() == "Original"
+        assert not item.label.winfo_manager()
+        item.begin_edit()  # second call is a no-op
+        assert item._editor.get() == "Original"
+    finally:
+        win.destroy()
+
+
+def test_enter_saves_the_edit_through_the_callback(root):
+    calls = []
+
+    def on_change(item, text):
+        calls.append(text)
+        return text.strip()
+
+    win, item = _editable_item(root, on_text_change=on_change)
+    try:
+        item.begin_edit()
+        item._editor.delete(0, tk.END)
+        item._editor.insert(0, " Fixed ")
+        assert item._commit_edit_event() == "break"
+
+        assert calls == [" Fixed "]
+        assert not item.is_editing
+        assert item.label.cget("text") == "Fixed"
+        assert item.task_text == "Fixed"
+        assert item.label.winfo_manager() == "pack"
+    finally:
+        win.destroy()
+
+
+def test_escape_cancels_the_edit_without_calling_back(root):
+    calls = []
+    win, item = _editable_item(root, on_text_change=lambda i, t: calls.append(t) or t)
+    try:
+        item.begin_edit()
+        item._editor.delete(0, tk.END)
+        item._editor.insert(0, "changed")
+        assert item._cancel_edit_event() == "break"
+
+        assert calls == []
+        assert item.label.cget("text") == "Original"
+        assert not item.is_editing
+    finally:
+        win.destroy()
+
+
+def test_rejected_edit_keeps_the_original_text(root):
+    """The app returns None for empty/unchanged text: the label must not change."""
+    win, item = _editable_item(root, on_text_change=lambda i, t: None)
+    try:
+        item.begin_edit()
+        item._editor.delete(0, tk.END)
+        item.commit_edit()
+
+        assert item.label.cget("text") == "Original"
+        assert not item.is_editing
+    finally:
+        win.destroy()
+
+
+def test_edited_text_rewraps_the_card(root):
+    win, item = _editable_item(root, on_text_change=lambda i, t: t)
+    try:
+        short_height = item.card_canvas.winfo_height()
+        item.begin_edit()
+        item._editor.insert(tk.END, " " + LONG_TEXT)
+        item.commit_edit()
+        win.update()
+
+        assert item.card_canvas.winfo_height() > short_height
+    finally:
+        win.destroy()
+
+
+def test_double_click_on_label_starts_editing(root):
+    win, item = _editable_item(root)
+    try:
+        win.deiconify()
+        win.update()
+        # Tk can't synthesize "<Double-...>" directly: two quick clicks make one.
+        for _ in range(2):
+            item.label.event_generate("<ButtonPress-1>", x=5, y=5)
+            item.label.event_generate("<ButtonRelease-1>", x=5, y=5)
+        win.update()
+        assert item.is_editing
+    finally:
+        win.destroy()
+
+
+def test_contains_does_not_match_a_sibling_with_a_longer_name(root):
+    win = tk.Toplevel(root)
+    try:
+        first = TaskItem(win, task_id="1", text="1", name="row1")
+        tenth = TaskItem(win, task_id="10", text="10", name="row10")
+        assert str(tenth).startswith(str(first))  # the trap: ".row1" is a prefix of ".row10"
+        assert first.contains(first.label)
+        assert not first.contains(tenth.label)
+        assert not first.contains(None)
+    finally:
+        win.destroy()
+
+
+def test_inline_edit_is_saved_to_the_model(app_window, tmp_path, monkeypatch):
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        item = app._task_list.task_widgets[0]
+        item.begin_edit()
+        item._editor.delete(0, tk.END)
+        item._editor.insert(0, "A edited")
+        item.commit_edit()
+
+        assert app.manager.task_by_id("a")["text"] == "A edited"
+        assert item.label.cget("text") == "A edited"
+    finally:
+        app._on_close()
+
+
+def test_f2_edits_the_hovered_task(app_window, tmp_path, monkeypatch):
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        assert config.shortcut_edit_task == "<F2>"
+        assert app.root.bind(config.shortcut_edit_task)
+        app_window.deiconify()
+        app_window.update()
+        target = app._task_list.task_widgets[2]
+        target._is_hovered = True
+
+        app._edit_current_task()
+
+        assert target.is_editing
+        assert not any(w.is_editing for w in app._task_list.task_widgets if w is not target)
+    finally:
+        app._on_close()
+
+
+def test_f2_without_a_target_does_nothing(app_window, tmp_path, monkeypatch):
+    app = _app_with_tasks(app_window, tmp_path, monkeypatch, SAMPLE_TASKS)
+    try:
+        app._edit_current_task()
+        assert not any(w.is_editing for w in app._task_list.task_widgets)
+    finally:
+        app._on_close()
+
+
 # ── Section header hierarchy (issues-v4 #4) ──
 
 

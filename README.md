@@ -12,6 +12,8 @@ reliable minimize/restore using a taskbar proxy window.
   - Add tasks quickly (**type + Enter**)
   - Mark complete (**checkbox + strikethrough**)
   - **Drag-and-drop reorder** (drag the task label)
+  - **Edit in place**: double-click a task (or hover it and press `F2`); `Enter` saves,
+    `Esc` cancels
   - Delete tasks individually
   - **Clear completed** tasks
   - **Undo** a deletion or a clear (footer "Undo" link for a few seconds, or `Ctrl+Z`):
@@ -38,6 +40,7 @@ _(Add a screenshot or GIF here)_
 | `Ctrl+N` | Focus the new-task field |
 | `Enter` | Add the typed task |
 | `Esc` | Clear the new-task field (never closes the app) |
+| `F2` / double-click | Edit the task under the pointer (`Enter` saves, `Esc` cancels) |
 | `Ctrl+D` | Clear completed tasks |
 | `Ctrl+Z` | Undo the last deletion or clear (repeat to go further back) |
 | `Ctrl+W` | Close Fly Notes |

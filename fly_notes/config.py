@@ -107,6 +107,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         # Not <Escape>: Escape means "cancel" (it clears the entry), never "quit".
         "close": "<Control-w>",
         "undo": "<Control-z>",
+        # Edits the task under the mouse pointer (or the one with keyboard focus).
+        "edit_task": "<F2>",
     },
     "strings": {
         "app_title": "Fly Notes",
