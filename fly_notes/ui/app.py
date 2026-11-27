@@ -12,11 +12,11 @@ import logging
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox
-from typing import Any
 
 from ..config import config
 from ..model.reorder import compute_reorder_target
 from ..model.store import TaskManager
+from ..model.task import Task
 from ..platform.window_controller import WindowController
 from ..platform.window_state import (
     Rect,
@@ -234,12 +234,12 @@ class FlyNotesApp:
         self._create_task_widget(task)
         self._refresh_ui()
 
-    def _create_task_widget(self, task: dict[str, Any], index: int | None = None) -> TaskItem:
+    def _create_task_widget(self, task: Task, index: int | None = None) -> TaskItem:
         widget = TaskItem(
             self._task_list.inner_frame,
-            task_id=task["id"],
-            text=task["text"],
-            completed=task["completed"],
+            task_id=task.id,
+            text=task.text,
+            completed=task.completed,
             on_status_change=self._toggle_task,
             on_delete=self._delete_task,
             on_drag_start=self._start_reorder,
@@ -327,14 +327,14 @@ class FlyNotesApp:
             return False
         if not self.manager.reorder_tasks(model_idx, target_model_idx):
             return False
-        self._task_list.sync_order([t["id"] for t in self.manager.tasks])
+        self._task_list.sync_order([t.id for t in self.manager.tasks])
         self._task_list.repack()
         return True
 
     def _change_task_text(self, item: TaskItem, text: str) -> str | None:
         """Save an inline edit; return the stored text, or None to keep the old one."""
         task = self.manager.update_text(item.task_id, text, max_length=config.max_task_length)
-        return task["text"] if task else None
+        return task.text if task else None
 
     def _edit_current_task(self) -> None:
         """F2: edit the task with keyboard focus, else the one under the pointer."""
@@ -368,7 +368,7 @@ class FlyNotesApp:
         if not restored:
             return
         for task in restored:
-            self._create_task_widget(task, index=self.manager.index_of(task["id"]))
+            self._create_task_widget(task, index=self.manager.index_of(task.id))
         self._refresh_ui()
 
     # ── Drag-and-drop (model-safe) ───────────
