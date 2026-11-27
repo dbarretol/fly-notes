@@ -1,1 +1,0 @@
-- use uv as package and virtual environment manager

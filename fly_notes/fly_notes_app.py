@@ -607,7 +607,7 @@ class TaskListView(tk.Frame):
         Deliberately not routed through _make_section_label: this is a
         meta hint, not a structural section separator, so it keeps the
         plain footer-sized link styling rather than the bold uppercase
-        header treatment (see issues-v4 #4).
+        header treatment.
         """
         page = min(hidden_count, config.max_visible_tasks)
         if page < hidden_count:

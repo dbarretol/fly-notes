@@ -261,7 +261,7 @@ class WindowController:
             # root.winfo_width(): immediately after geometry(), Tk hasn't
             # processed the pending configure request yet, so a re-read
             # without update_idletasks() reliably returns the *previous*
-            # width (confirmed empirically — see docs/issues-v3.md #5).
+            # width (confirmed empirically in a tight resize loop).
             self.on_resize_callback(new_w)
 
     def _stop_resize(self, event: tk.Event) -> None:
