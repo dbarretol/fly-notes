@@ -20,6 +20,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AppConfig` (`cfg.colors.header_bg`, `cfg.spacing.md`, ...) in `main()`, and the widgets
   receive it instead of reading a global that loaded `config.json` at import time. Tests use
   pure defaults, whatever `config.json` is on the machine. ([#17])
+- `colors.btn_danger_hover` now colors the delete button while it is pressed, and
+  `colors.checkbox_bg` the inside of an unticked checkbox. Both were defined but never used;
+  their defaults keep the current look. ([#18])
+
+### Fixed
+
+- `config.json` is checked more strictly, and an invalid file falls back to the defaults as
+  before. Newly rejected values:
+  - `0`, negative numbers, `true`/`false` and `null` where a size, limit or delay is expected;
+  - spacing values that are not whole numbers of 0 or more;
+  - `min_width` or `min_height` above the default size;
+  - an unfocused opacity of 0 or above the focused one;
+  - a font size that is not a whole number;
+  - a font family that is not text;
+  - empty shortcuts and non-text strings. ([#18])
+- A shortcut that Tk rejects no longer stops the app from starting: it logs a warning and
+  uses the default for that action. ([#18])
+
+### Removed
+
+- `settings.animation_ms`, which nothing used. If it is still in a `config.json`, it is
+  ignored with a warning. ([#18])
 
 ## [0.2.0] - 2026-11-26
 
@@ -132,6 +154,7 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#15]: https://github.com/dbarretol/fly-notes/issues/15
 [#16]: https://github.com/dbarretol/fly-notes/issues/16
 [#17]: https://github.com/dbarretol/fly-notes/issues/17
+[#18]: https://github.com/dbarretol/fly-notes/issues/18
 [#19]: https://github.com/dbarretol/fly-notes/issues/19
 [#20]: https://github.com/dbarretol/fly-notes/issues/20
 [#21]: https://github.com/dbarretol/fly-notes/issues/21

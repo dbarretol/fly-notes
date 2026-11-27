@@ -26,6 +26,7 @@ class CustomCheckbox(tk.Canvas):
         check_color: str = "#B35C00",
         border_color: str = "#B0977A",
         hover_color: str = "#FFF0E0",
+        box_color: str = "#FFFFFF",
         **kwargs,
     ) -> None:
         super().__init__(
@@ -45,6 +46,7 @@ class CustomCheckbox(tk.Canvas):
         self._check_color = check_color
         self._border_color = border_color
         self._hover_color = hover_color
+        self._box_color = box_color
         self._is_hovered = False
 
         # Pre-compute geometry constants
@@ -100,7 +102,7 @@ class CustomCheckbox(tk.Canvas):
             outline = self._check_color
             border_w = 2
         else:
-            fill = self._bg
+            fill = self._box_color
             outline = self._border_color
             border_w = 1.5
 
