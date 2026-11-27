@@ -458,14 +458,37 @@ class TaskListView(tk.Frame):
             return pending + completed
         return list(self._task_widgets)
 
-    def swap_widgets(self, widget_a: TaskItem, widget_b: TaskItem) -> None:
-        """Swap the storage order of two widgets already in this view."""
-        i = self._task_widgets.index(widget_a)
-        j = self._task_widgets.index(widget_b)
-        self._task_widgets[i], self._task_widgets[j] = (
-            self._task_widgets[j],
-            self._task_widgets[i],
-        )
+    def sync_order(self, task_ids: list[str]) -> None:
+        """Reorder the insertion-order list to match the model's *task_ids*.
+
+        A reorder moves a task within the model (pop + insert), which with
+        grouping can jump over tasks of the other group; swapping just the
+        two widgets would leave the widget order out of step with the model.
+        """
+        position = {task_id: i for i, task_id in enumerate(task_ids)}
+        self._task_widgets.sort(key=lambda w: position.get(w.task_id, len(position)))
+
+    def packed_order(self) -> list[TaskItem]:
+        """Widgets currently rendered (not hidden by the cap), top to bottom."""
+        return [w for w in self.visual_order() if w.winfo_manager()]
+
+    def ensure_visible(self, widget: TaskItem) -> None:
+        """Scroll just enough for *widget* to be fully inside the viewport."""
+        self._inner.update_idletasks()
+        total = self._inner.winfo_height()
+        view_h = self._canvas.winfo_height()
+        if total <= 0 or view_h <= 1:
+            return
+        top = widget.winfo_y()
+        bottom = top + widget.winfo_height()
+        view_top = int(self._canvas.canvasy(0))
+        # Tk rounds the view origin to the nearest yscrollincrement, so aim at a
+        # multiple of it: down when scrolling up, up when scrolling down.
+        step = max(1, int(self._canvas.cget("yscrollincrement")))
+        if top < view_top:
+            self._canvas.yview_moveto((top // step) * step / total)
+        elif bottom > view_top + view_h:
+            self._canvas.yview_moveto(-(-(bottom - view_h) // step) * step / total)
 
     @property
     def inner_frame(self) -> tk.Frame:
@@ -806,6 +829,8 @@ class FlyNotesApp:
             self.root,
             on_submit=self._add_new_task,
         )
+        # Down from the new-task field jumps into the list.
+        self._entry_bar.entry_widget.bind("<Down>", lambda _: self._focus_first_task())
         self._entry_bar.pack(
             fill="x",
             padx=config.spacing_lg,
@@ -866,6 +891,8 @@ class FlyNotesApp:
             on_drag_do=self._do_reorder,
             on_drag_stop=self._stop_reorder,
             on_text_change=self._change_task_text,
+            on_navigate=self._navigate_from,
+            on_move=self._move_task,
         )
         self._task_list.add_widget(widget, index=index)
         return widget
@@ -878,11 +905,76 @@ class FlyNotesApp:
             )
             if not ok:
                 return
+        # Keyboard users keep their place: focus moves to the next row (or the previous one).
+        had_focus = item.has_focus
+        next_focus = self._neighbour(item) if had_focus else None
         if self.manager.delete_task(item.task_id) is None:
             return
         self._task_list.remove_widget(item)
         self._refresh_ui()
         self._footer.show_undo(config.string("undo_deleted"))
+        if next_focus is not None:
+            self._focus_task(next_focus)
+        elif had_focus:
+            self._entry_bar.focus_entry()
+
+    # ── Keyboard navigation ──────────────────
+
+    def _neighbour(self, item: TaskItem) -> TaskItem | None:
+        rows = self._task_list.packed_order()
+        if item not in rows:
+            return None
+        i = rows.index(item)
+        if i + 1 < len(rows):
+            return rows[i + 1]
+        return rows[i - 1] if i > 0 else None
+
+    def _focus_task(self, item: TaskItem) -> None:
+        item.focus_row()
+        self._task_list.ensure_visible(item)
+
+    def _focus_first_task(self) -> str | None:
+        rows = self._task_list.packed_order()
+        if not rows:
+            return None
+        self._focus_task(rows[0])
+        return "break"
+
+    def _navigate_from(self, item: TaskItem, delta: int) -> None:
+        """Up/Down on a row: focus the adjacent row; Up from the first goes to the entry."""
+        rows = self._task_list.packed_order()
+        if item not in rows:
+            return
+        target = rows.index(item) + delta
+        if target < 0:
+            self._entry_bar.focus_entry()
+        elif target < len(rows):
+            self._focus_task(rows[target])
+
+    def _move_task(self, item: TaskItem, delta: int) -> None:
+        """Alt+Up/Down: swap with the adjacent task, staying inside its group."""
+        visual = self._task_list.visual_order()
+        target_pos = visual.index(item) + delta
+        if not 0 <= target_pos < len(visual):
+            return
+        target = visual[target_pos]
+        if config.group_completed and target.completed_var.get() != item.completed_var.get():
+            return
+        if self._reorder(item, target):
+            self._focus_task(item)
+
+    def _reorder(self, item: TaskItem, target: TaskItem) -> bool:
+        """Move *item* to *target*'s place in the model and re-sync the widgets."""
+        try:
+            model_idx = self.manager.index_of(item.task_id)
+            target_model_idx = self.manager.index_of(target.task_id)
+        except ValueError:
+            return False
+        if not self.manager.reorder_tasks(model_idx, target_model_idx):
+            return False
+        self._task_list.sync_order([t["id"] for t in self.manager.tasks])
+        self._task_list.repack()
+        return True
 
     def _change_task_text(self, item: TaskItem, text: str) -> str | None:
         """Save an inline edit; return the stored text, or None to keep the old one."""
@@ -957,16 +1049,8 @@ class FlyNotesApp:
 
         target_widget = next(w for w in visual if w.task_id == target_id)
 
-        # Resolve model indices via task_id — safe regardless of grouping
-        try:
-            model_idx = self.manager.index_of(item.task_id)
-            target_model_idx = self.manager.index_of(target_id)
-        except ValueError:
-            return
-
-        if self.manager.reorder_tasks(model_idx, target_model_idx):
-            self._task_list.swap_widgets(item, target_widget)
-            self._task_list.repack()
+        # Model indices are resolved via task_id — safe regardless of grouping
+        if self._reorder(item, target_widget):
             self._drag_start_y = event.y_root
 
     # ── UI State ─────────────────────────────

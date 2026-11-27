@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The window reopens with the size and position it had when it was closed, stored in
   `state.json` next to the tasks file. If that position is no longer on any connected
   monitor, the default position is used. ([#11])
+- Keyboard navigation: task rows are focusable (`Tab`, or `↓` from the new-task field) and
+  show a focus ring. `↑`/`↓` move between tasks, `Space` toggles, `Delete` deletes (undoable),
+  `Alt+↑`/`Alt+↓` reorder within the group, and `F2`/`Enter` edit. ([#13])
 
 ### Changed
 
@@ -33,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   being cut off at the window edge. ([#8])
 - Hovering a task could be mistaken for hovering another one whose internal widget name
   starts the same way (e.g. the 1st and 10th rows). ([#10])
+- Reordering across the hidden boundary between groups no longer leaves the on-screen order
+  out of step with the saved order. ([#13])
 
 ## [0.1.1] - 2026-11-26
 
@@ -86,3 +91,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#10]: https://github.com/dbarretol/fly-notes/issues/10
 [#11]: https://github.com/dbarretol/fly-notes/issues/11
 [#12]: https://github.com/dbarretol/fly-notes/issues/12
+[#13]: https://github.com/dbarretol/fly-notes/issues/13

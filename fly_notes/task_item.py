@@ -5,6 +5,7 @@ Self-contained task-row widget with:
 * Distinct completed vs pending visual states
 * Keyboard-accessible delete
 * Inline text editing (double-click or F2)
+* Keyboard focus with a visible focus ring (arrows, Space, Delete, Alt+arrows)
 * Drag-and-drop callbacks
 """
 
@@ -277,6 +278,8 @@ class TaskItem(tk.Frame):
         on_drag_do: Callable[[TaskItem, tk.Event], None] | None = None,
         on_drag_stop: Callable[[TaskItem, tk.Event], None] | None = None,
         on_text_change: Callable[[TaskItem, str], str | None] | None = None,
+        on_navigate: Callable[[TaskItem, int], None] | None = None,
+        on_move: Callable[[TaskItem, int], None] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -298,12 +301,15 @@ class TaskItem(tk.Frame):
         self._on_drag_do = on_drag_do
         self._on_drag_stop = on_drag_stop
         self._on_text_change = on_text_change
+        self._on_navigate = on_navigate
+        self._on_move = on_move
 
         # State
         self.completed_var = _BoolValue(completed)
         self._is_hovered = False
         self._is_dragging = False
         self._drag_active = False
+        self._has_focus = False
         self._card_fill = config.item_bg_completed if completed else config.item_bg
         self._radius = config.border_radius
         self._shadow_px = 2
@@ -313,11 +319,13 @@ class TaskItem(tk.Frame):
         # visible "card" is drawn on a Canvas behind a content Frame that
         # is inset by _radius — the drawn corners are never covered by the
         # (square-cornered) content frame sitting on top of them.
+        # The card canvas is also the row's keyboard focus target (Tab/arrows).
         self.card_canvas = tk.Canvas(
             self,
             bg=config.content_bg,
             highlightthickness=0,
             bd=0,
+            takefocus=1,
         )
         self.card_canvas.pack(fill="both", expand=True)
         self.card_canvas.bind("<Configure>", self._on_canvas_configure)
@@ -426,6 +434,63 @@ class TaskItem(tk.Frame):
         self.delete_btn.bind("<Return>", lambda e: self._handle_delete())
         self.delete_btn.bind("<space>", lambda e: self._handle_delete())
         self.label.bind("<Double-Button-1>", lambda e: self.begin_edit())
+
+        c = self.card_canvas
+        c.bind("<FocusIn>", self._on_focus_in)
+        c.bind("<FocusOut>", self._on_focus_out)
+        c.bind("<Up>", lambda e: self._navigate(-1))
+        c.bind("<Down>", lambda e: self._navigate(1))
+        c.bind("<Alt-Up>", lambda e: self._move(-1))
+        c.bind("<Alt-Down>", lambda e: self._move(1))
+        c.bind("<space>", self._key_toggle)
+        c.bind("<Delete>", self._key_delete)
+        c.bind("<F2>", self._key_edit)
+        c.bind("<Return>", self._key_edit)
+
+    # ── Keyboard focus ───────────────────────
+
+    @property
+    def has_focus(self) -> bool:
+        return self._has_focus
+
+    def focus_row(self) -> None:
+        """Give this row keyboard focus (shows the focus ring)."""
+        self.card_canvas.focus_set()
+
+    def toggle(self) -> None:
+        """Flip completed, exactly like clicking the checkbox."""
+        self.check.checked = not self.check.checked
+        self._handle_status_change()
+
+    def _on_focus_in(self, event: tk.Event | None = None) -> None:
+        self._has_focus = True
+        self._redraw_card()
+
+    def _on_focus_out(self, event: tk.Event | None = None) -> None:
+        self._has_focus = False
+        self._redraw_card()
+
+    def _navigate(self, delta: int) -> str:
+        if self._on_navigate:
+            self._on_navigate(self, delta)
+        return "break"
+
+    def _move(self, delta: int) -> str:
+        if self._on_move:
+            self._on_move(self, delta)
+        return "break"
+
+    def _key_toggle(self, event: tk.Event | None = None) -> str:
+        self.toggle()
+        return "break"
+
+    def _key_delete(self, event: tk.Event | None = None) -> str:
+        self._handle_delete()
+        return "break"
+
+    def _key_edit(self, event: tk.Event | None = None) -> str:
+        self.begin_edit()
+        return "break"
 
     # ── Inline edit ──────────────────────────
 
@@ -712,8 +777,12 @@ class TaskItem(tk.Frame):
             tags=("card",),
         )
 
-        outline = config.drag_border if self._drag_active else config.border_color
-        outline_width = 2 if self._drag_active else 1
+        if self._drag_active:
+            outline, outline_width = config.drag_border, 2
+        elif self._has_focus:
+            outline, outline_width = config.border_focus, 2
+        else:
+            outline, outline_width = config.border_color, 1
         draw_rounded_rect(
             self.card_canvas,
             0,
