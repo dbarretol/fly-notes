@@ -1,4 +1,5 @@
 import json
+import logging
 
 import pytest
 
@@ -212,3 +213,32 @@ def test_backup_holds_previous_version(tmp_path):
 
     backup = json.loads((tmp_path / "tasks.json.bak").read_text(encoding="utf-8"))
     assert [t["text"] for t in backup] == ["one"]
+
+
+# ── Persistence hardening ────────────────────
+
+
+def test_task_text_is_not_logged(temp_tasks_file, caplog):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    with caplog.at_level(logging.DEBUG, logger="fly_notes.task_manager"):
+        task = tm.add_task("call the dentist about the results")
+        tm.flush()
+    assert "dentist" not in caplog.text
+    assert task["id"] in caplog.text
+
+
+def test_save_fsyncs_before_replacing_the_file(temp_tasks_file, monkeypatch):
+    import fly_notes.task_manager as tm_module
+
+    events = []
+    real_fsync, real_replace = tm_module.os.fsync, tm_module.os.replace
+    monkeypatch.setattr(tm_module.os, "fsync", lambda fd: (events.append("fsync"), real_fsync(fd)))
+    monkeypatch.setattr(
+        tm_module.os, "replace", lambda a, b: (events.append("replace"), real_replace(a, b))
+    )
+
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    tm.add_task("durable")
+    tm.flush()
+
+    assert events == ["fsync", "replace"]

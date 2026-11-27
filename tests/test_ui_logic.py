@@ -28,6 +28,40 @@ def root():
     r.destroy()
 
 
+@pytest.fixture
+def app_window(root):
+    """A fresh window to host a full FlyNotesApp.
+
+    A Toplevel of the shared root, never a second ``tk.Tk()``: creating
+    another Tcl interpreter under pytest's output capture intermittently fails
+    on Windows with "Can't find a usable init.tcl".
+    """
+    win = tk.Toplevel(root)
+    win.withdraw()
+    yield win
+    if win.winfo_exists():
+        win.destroy()
+
+
+# ── Close error handling ─────────────────────
+
+
+def test_close_logs_save_failure_and_still_closes(app_window, tmp_path, monkeypatch, caplog):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app_root = app_window
+    app = FlyNotesApp(app_root)
+
+    def boom():
+        raise OSError("disk full")
+
+    monkeypatch.setattr(app.manager, "flush", boom)
+    with caplog.at_level(logging.ERROR, logger="fly_notes.fly_notes_app"):
+        app._on_close()
+
+    assert "Could not save tasks while closing" in caplog.text
+    assert not app_root.winfo_exists()
+
+
 # ── Escape / shortcuts ───────────────────────
 
 
@@ -52,11 +86,12 @@ def test_escape_in_entry_clears_text_and_restores_placeholder(root):
     bar.destroy()
 
 
-def test_escape_while_typing_does_not_close_the_app(tmp_path, monkeypatch):
+def test_escape_while_typing_does_not_close_the_app(app_window, tmp_path, monkeypatch):
     monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
-    app_root = tk.Tk()
+    app_root = app_window
     app = FlyNotesApp(app_root)
     try:
+        app_root.deiconify()  # key events are only delivered to a mapped window
         entry = app._entry_bar.entry_widget
         entry.focus_force()
         app_root.update()
@@ -601,13 +636,12 @@ def test_proxy_close_delegates_to_on_close_callback(root):
         ctrl._proxy.destroy()
 
 
-def test_closing_from_taskbar_flushes_pending_save(tmp_path, monkeypatch):
+def test_closing_from_taskbar_flushes_pending_save(app_window, tmp_path, monkeypatch):
     """A change made right before closing via the taskbar entry must reach
     disk, even though saves are debounced."""
     tasks_file = tmp_path / "tasks.json"
     monkeypatch.setitem(config._attr_cache, "tasks_file", str(tasks_file))
-    app_root = tk.Tk()
-    app_root.withdraw()
+    app_root = app_window
     app = FlyNotesApp(app_root)
     app.manager.SAVE_DELAY = 60  # make sure only the close path can write
     app.manager.add_task("written just before closing")

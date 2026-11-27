@@ -8,6 +8,7 @@ Main orchestrator with full UX polish:
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from tkinter import messagebox
 from typing import Any
@@ -16,6 +17,8 @@ from .config import blend_alpha_hex, config
 from .task_item import TaskItem
 from .task_manager import TaskManager
 from .window_controller import WindowController
+
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
 # Sub-components extracted from the monolithic class
@@ -848,5 +851,6 @@ class FlyNotesApp:
         try:
             self.manager.flush()
         except Exception:
-            pass
+            # Closing must still succeed, but a failed final save must not be silent.
+            logger.exception("Could not save tasks while closing")
         self.root.destroy()
