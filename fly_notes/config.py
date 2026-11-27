@@ -8,22 +8,17 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import sys
-from pathlib import Path
 from typing import Any
+
+from .paths import APP_PATHS
 
 logger = logging.getLogger(__name__)
 
-_PACKAGE_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _PACKAGE_DIR.parent
-CONFIG_FILE = _PROJECT_ROOT / "config.json"
-DEFAULT_TASKS_FILE = _PROJECT_ROOT / "tasks.json"
-
-# When frozen by PyInstaller, bundled data (see FlyNotes.spec's `datas`)
-# is extracted to sys._MEIPASS at runtime instead of living next to the
-# source tree.
-_ASSETS_ROOT = Path(getattr(sys, "_MEIPASS", _PROJECT_ROOT))
-ICON_PATH = _ASSETS_ROOT / "assets" / "fly_notes.ico"
+# Where config/data/assets live depends on how the app runs (source,
+# installed .exe, portable .exe) — see fly_notes/paths.py.
+CONFIG_FILE = APP_PATHS.config_file
+DEFAULT_TASKS_FILE = APP_PATHS.tasks_file
+ICON_PATH = APP_PATHS.icon_file
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "colors": {
@@ -291,8 +286,8 @@ def _validate_settings(settings: dict[str, Any]) -> None:
             raise ValueError(f"settings.{key}: must be a bool, got {val!r}")
 
     tf = settings.get("tasks_file")
-    if tf is not None and not isinstance(tf, str):
-        raise ValueError(f"settings.tasks_file: must be a string path, got {tf!r}")
+    if tf is not None and (not isinstance(tf, str) or not tf.strip()):
+        raise ValueError(f"settings.tasks_file: must be a non-empty string path, got {tf!r}")
 
 
 def _validate_fonts(fonts: dict[str, list]) -> None:
@@ -346,6 +341,7 @@ class Config:
     def __init__(self) -> None:
         self._data: dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
         self._load()
+        self._resolve_tasks_file()
         # Pre-build a lookup cache for __getattr__
         self._attr_cache: dict[str, Any] = {}
 
@@ -368,6 +364,12 @@ class Config:
         except Exception as exc:
             logger.warning("Bad config — falling back to defaults: %s", exc)
             self._data = copy.deepcopy(DEFAULT_CONFIG)
+
+    def _resolve_tasks_file(self) -> None:
+        """Make ``settings.tasks_file`` absolute; relative paths are taken from the data dir."""
+        settings = self._data["settings"]
+        settings["tasks_file"] = str(APP_PATHS.resolve_data_path(settings["tasks_file"]))
+        logger.info("Data mode: %s — tasks file: %s", APP_PATHS.mode, settings["tasks_file"])
 
     def _validate_structure(self) -> None:
         _validate_colors(self._data["colors"])
