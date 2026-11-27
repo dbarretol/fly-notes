@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Variable where it is installed. Completed tasks are only dimmed and struck through. The
   dark theme follows the same layout. Card borders can be turned back on with `item_border`
   in `config.json`. ([#77])
+- New app icon to match: a yellow sticky note with a green check mark, sharp from 16 to 256 px
+  (the old one stopped at 64 px). `scripts/make_icon.ps1` regenerates it. ([#79])
 
 ## [1.0.0] - 2026-11-27
 
@@ -231,3 +233,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#65]: https://github.com/dbarretol/fly-notes/issues/65
 [#66]: https://github.com/dbarretol/fly-notes/issues/66
 [#77]: https://github.com/dbarretol/fly-notes/issues/77
+[#79]: https://github.com/dbarretol/fly-notes/issues/79
