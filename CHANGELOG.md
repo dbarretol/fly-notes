@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit a task's text in place: double-click it, or hover it and press `F2`
   (`shortcuts.edit_task`). `Enter` or clicking elsewhere saves, `Esc` cancels, and empty text
   keeps the original. Edits use the same length limit as new tasks. ([#10])
+- The window reopens with the size and position it had when it was closed, stored in
+  `state.json` next to the tasks file. If that position is no longer on any connected
+  monitor, the default position is used. ([#11])
 
 ### Changed
 
@@ -78,3 +81,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#8]: https://github.com/dbarretol/fly-notes/issues/8
 [#9]: https://github.com/dbarretol/fly-notes/issues/9
 [#10]: https://github.com/dbarretol/fly-notes/issues/10
+[#11]: https://github.com/dbarretol/fly-notes/issues/11

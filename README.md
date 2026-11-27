@@ -22,6 +22,8 @@ reliable minimize/restore using a taskbar proxy window.
     configurable cap on how many rows render at once
 - **Header-only movement**: drag the header bar to move the window
 - **8-direction manual resizing**: drag any edge or corner
+- **Remembers its size and position** between sessions (and falls back to the default
+  spot if that position is no longer on any connected monitor)
 - **Reliable minimize/restore on Windows 11**, via a **Taskbar Proxy Window** strategy
 - **Debounced, atomic persistence** to a local `tasks.json` (survives crashes mid-write)
   - The previous version is kept as `tasks.json.bak`. If `tasks.json` ever becomes
@@ -90,6 +92,7 @@ FLY_NOTES/
 │   ├── task_manager.py        # Task CRUD + debounced atomic JSON persistence (no Tkinter)
 │   ├── task_item.py           # TaskItem row widget + custom checkbox
 │   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
+│   ├── window_state.py        # Remembered window geometry + monitor checks (state.json)
 │   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
 ├── tests/                     # pytest suite (task manager, config, UI logic, resize geometry)
 ├── docs/                      # Contributor notes (AGENTS.md: tooling conventions)
@@ -137,6 +140,9 @@ defaults.
 | From source (`uv run main.py`) | Project root, next to `main.py` |
 | `FlyNotes.exe` | `%APPDATA%\FlyNotes\` (created on first save) |
 | `FlyNotes.exe`, portable | The executable's folder — used whenever a `config.json` or `tasks.json` already sits next to `FlyNotes.exe` |
+
+The window's last size and position are kept in `state.json`, next to `tasks.json`.
+Deleting it resets the window to the default size and position.
 
 `settings.tasks_file` overrides the tasks file location. A relative path is resolved
 against the data folder above; an absolute path (environment variables such as
