@@ -242,3 +242,99 @@ def test_save_fsyncs_before_replacing_the_file(temp_tasks_file, monkeypatch):
     tm.flush()
 
     assert events == ["fsync", "replace"]
+
+
+# ── Undo (#9) ────────────────────────────────
+
+
+def _snapshot(tm):
+    return [(t["id"], t["text"], t["completed"]) for t in tm.tasks]
+
+
+def test_undo_delete_restores_task_at_its_original_position(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    for i in range(4):
+        tm.add_task(f"Task {i}")
+    before = _snapshot(tm)
+
+    tm.delete_task(tm.tasks[1]["id"])
+    restored = tm.undo()
+
+    assert [t["text"] for t in restored] == ["Task 1"]
+    assert _snapshot(tm) == before
+
+
+def test_undo_clear_completed_restores_every_task_in_order(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    tasks = [tm.add_task(f"Task {i}") for i in range(5)]
+    for t in (tasks[0], tasks[2], tasks[4]):
+        tm.toggle_task(t["id"])
+    before = _snapshot(tm)
+
+    assert tm.clear_completed() == 3
+    restored = tm.undo()
+
+    assert len(restored) == 3
+    assert _snapshot(tm) == before
+
+
+def test_undo_is_last_in_first_out_and_empty_when_nothing_to_undo(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a, _, c = (tm.add_task(x) for x in "abc")
+    tm.delete_task(a["id"])
+    tm.delete_task(c["id"])
+
+    assert [t["text"] for t in tm.undo()] == ["c"]
+    assert [t["text"] for t in tm.undo()] == ["a"]
+    assert [t["text"] for t in tm.tasks] == ["a", "b", "c"]
+    assert tm.can_undo is False
+    assert tm.undo() == []
+
+
+def test_clear_completed_with_nothing_completed_is_not_undoable(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    tm.add_task("pending")
+    assert tm.clear_completed() == 0
+    assert tm.can_undo is False
+
+
+def test_undo_after_the_list_shrank_appends_at_the_end(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a, b, c = (tm.add_task(x) for x in "abc")
+    tm.delete_task(c["id"])  # was at index 2
+    tm.delete_task(a["id"])
+    tm.delete_task(b["id"])
+    tm.undo()  # b
+    tm.undo()  # a
+
+    tm.delete_task(b["id"])  # list is now [a]; c's index 2 is out of range
+    tm.undo()  # b back
+    tm.undo()  # c
+
+    assert [t["text"] for t in tm.tasks] == ["a", "b", "c"]
+
+
+def test_undo_is_persisted(temp_tasks_file):
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    a = tm.add_task("keep me")
+    tm.delete_task(a["id"])
+    tm.flush()
+    tm.undo()
+    tm.flush()
+
+    reloaded = TaskManager(tasks_file=temp_tasks_file)
+    assert [t["text"] for t in reloaded.tasks] == ["keep me"]
+
+
+def test_undo_history_is_bounded(temp_tasks_file):
+    from fly_notes import task_manager
+
+    tm = TaskManager(tasks_file=temp_tasks_file)
+    ids = [tm.add_task(str(i))["id"] for i in range(task_manager._UNDO_LIMIT + 5)]
+    for task_id in ids:
+        tm.delete_task(task_id)
+
+    undone = 0
+    while tm.undo():
+        undone += 1
+    assert undone == task_manager._UNDO_LIMIT

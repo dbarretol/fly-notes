@@ -14,6 +14,8 @@ reliable minimize/restore using a taskbar proxy window.
   - **Drag-and-drop reorder** (drag the task label)
   - Delete tasks individually
   - **Clear completed** tasks
+  - **Undo** a deletion or a clear (footer "Undo" link for a few seconds, or `Ctrl+Z`):
+    tasks come back at their original position
   - Automatic grouping into "To Do" / "Completed" sections, with a
     configurable cap on how many rows render at once
 - **Header-only movement**: drag the header bar to move the window
@@ -36,7 +38,8 @@ _(Add a screenshot or GIF here)_
 | `Ctrl+N` | Focus the new-task field |
 | `Enter` | Add the typed task |
 | `Esc` | Clear the new-task field (never closes the app) |
-| `Ctrl+D` | Clear completed tasks (asks for confirmation) |
+| `Ctrl+D` | Clear completed tasks |
+| `Ctrl+Z` | Undo the last deletion or clear (repeat to go further back) |
 | `Ctrl+W` | Close Fly Notes |
 
 All of them can be changed in the `shortcuts` section of `config.json`, using Tk event

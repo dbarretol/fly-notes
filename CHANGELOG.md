@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Undo for deleted tasks: a "Task deleted · Undo" notice appears in the footer for a few
+  seconds (`settings.undo_timeout_ms`), and `Ctrl+Z` (`shortcuts.undo`) restores the most
+  recent deletions, one at a time, at their original position. "Clear completed" can be
+  undone the same way. ([#9])
+
+### Changed
+
+- "Clear completed" no longer asks for confirmation, since it can be undone. The
+  `confirm_clear_title` and `confirm_clear_msg` strings were removed. ([#9])
+
 ### Fixed
 
 - Long task text wraps onto several lines and re-wraps when the window is resized, instead of
@@ -59,3 +71,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#6]: https://github.com/dbarretol/fly-notes/issues/6
 [#7]: https://github.com/dbarretol/fly-notes/issues/7
 [#8]: https://github.com/dbarretol/fly-notes/issues/8
+[#9]: https://github.com/dbarretol/fly-notes/issues/9

@@ -85,6 +85,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "border_radius": 6,
         "animation_ms": 150,
         "confirm_delete": False,
+        "undo_timeout_ms": 5000,
         "max_visible_tasks": 100,
         "checkbox_size": 18,
         "group_completed": True,
@@ -105,6 +106,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "delete_completed": "<Control-d>",
         # Not <Escape>: Escape means "cancel" (it clears the entry), never "quit".
         "close": "<Control-w>",
+        "undo": "<Control-z>",
     },
     "strings": {
         "app_title": "Fly Notes",
@@ -114,8 +116,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "empty_state": "No tasks yet — type above to start!",
         "confirm_delete_title": "Delete Task",
         "confirm_delete_msg": "Remove this task permanently?",
-        "confirm_clear_title": "Clear Completed",
-        "confirm_clear_msg": "Remove {count} completed task(s)?",
+        "undo_deleted": "Task deleted",
+        "undo_cleared": "{count} completed task(s) cleared",
+        "undo_action": "Undo",
         "section_pending": "To Do ({count})",
         "section_completed": "Completed ({count})",
         "more_hidden": "+ {count} more",
@@ -273,6 +276,7 @@ def _validate_settings(settings: dict[str, Any]) -> None:
         "checkbox_size",
         "separator_height",
         "scrollbar_width",
+        "undo_timeout_ms",
     )
     for key in int_keys:
         val = settings.get(key)
