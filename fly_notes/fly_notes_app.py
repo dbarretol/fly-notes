@@ -362,6 +362,8 @@ class TaskListView(tk.Frame):
         )
         self._scrollbar_visible = False
         self._task_widgets: list[TaskItem] = []
+        # Rows revealed past max_visible_tasks with "Show N more" (whole pages).
+        self._extra_visible = 0
         # Transient widgets (section headers, separators, spacers)
         self._transient_widgets: list[tk.Widget] = []
 
@@ -517,21 +519,8 @@ class TaskListView(tk.Frame):
             self._pack_flat(visible)
 
         if hidden_count:
-            # Deliberately not routed through _make_section_label: this is a
-            # meta hint, not a structural section separator, so it keeps the
-            # plain text_secondary/footer styling rather than the bold
-            # uppercase header treatment (see issues-v4 #4).
-            more_label = tk.Label(
-                self._inner,
-                text=config.string("more_hidden", count=hidden_count),
-                fg=config.text_secondary,
-                bg=config.content_bg,
-                font=config.font_footer,
+            self._make_show_more_link(hidden_count).pack(
                 anchor="w",
-            )
-            self._transient_widgets.append(more_label)
-            more_label.pack(
-                fill="x",
                 padx=config.spacing_xl,
                 pady=(config.spacing_xs, config.spacing_xs),
             )
@@ -550,15 +539,56 @@ class TaskListView(tk.Frame):
 
     # ── Private helpers ──────────────────────
 
+    def show_more(self) -> None:
+        """Reveal the next page (``max_visible_tasks`` rows) of hidden tasks."""
+        self._extra_visible += config.max_visible_tasks
+        self.repack()
+
+    def _make_show_more_link(self, hidden_count: int) -> tk.Label:
+        """The "Show N more" link under the list, for rows past the cap.
+
+        Deliberately not routed through _make_section_label: this is a
+        meta hint, not a structural section separator, so it keeps the
+        plain footer-sized link styling rather than the bold uppercase
+        header treatment (see issues-v4 #4).
+        """
+        page = min(hidden_count, config.max_visible_tasks)
+        if page < hidden_count:
+            text = config.string("more_hidden_paged", count=page, hidden=hidden_count)
+        else:
+            text = config.string("more_hidden", count=page)
+        link = tk.Label(
+            self._inner,
+            text=text,
+            fg=config.link_color,
+            bg=config.content_bg,
+            font=config.font_footer,
+            anchor="w",
+            cursor="hand2",
+            takefocus=True,
+            highlightthickness=1,
+            highlightbackground=config.content_bg,
+            highlightcolor=config.border_focus,
+        )
+        underline = (*config.font_footer[:2], "underline")
+        link.bind("<Button-1>", lambda _: self.show_more())
+        link.bind("<Return>", lambda _: self.show_more())
+        link.bind("<space>", lambda _: self.show_more())
+        link.bind("<Enter>", lambda _: link.config(fg=config.link_hover, font=underline))
+        link.bind("<Leave>", lambda _: link.config(fg=config.link_color, font=config.font_footer))
+        link.bind("<MouseWheel>", self._on_mousewheel)
+        self._transient_widgets.append(link)
+        return link
+
     def _visible_widgets(self) -> tuple[list[TaskItem], int]:
         """Cap the rendered widgets at ``config.max_visible_tasks``.
 
         Applied to the *visual* (post-grouping) order, as one combined
-        cap across both groups. Returns the widgets to render and how
-        many were left out.
+        cap across both groups, plus any pages revealed with "Show N
+        more". Returns the widgets to render and how many were left out.
         """
         visual = self.visual_order()
-        limit = config.max_visible_tasks
+        limit = config.max_visible_tasks + self._extra_visible
         if len(visual) <= limit:
             return visual, 0
         return visual[:limit], len(visual) - limit
