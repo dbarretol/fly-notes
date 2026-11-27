@@ -58,6 +58,10 @@ def test_validate_settings():
         _validate_settings({"default_width": -1})
     with pytest.raises(ValueError):
         _validate_settings({"confirm_delete": "yes"})
+    with pytest.raises(ValueError):
+        _validate_settings({"always_on_top": 1})
+    with pytest.raises(ValueError):
+        _validate_settings({"inactive_fade_delay_ms": -5})
 
 
 def test_config_dynamic_attributes():

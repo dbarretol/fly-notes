@@ -22,8 +22,10 @@ from .window_state import (
     Rect,
     WindowGeometry,
     choose_geometry,
+    load_always_on_top,
     load_geometry,
     monitor_work_areas,
+    save_always_on_top,
     save_geometry,
     state_file_for,
 )
@@ -72,13 +74,15 @@ def compute_reorder_target(
 
 
 class HeaderBar(tk.Frame):
-    """Title bar with drag, minimize, and close buttons."""
+    """Title bar with drag, always-on-top pin, minimize, and close buttons."""
 
     def __init__(
         self,
         master: tk.Widget,
         on_close: callable,
         on_minimize: callable,
+        on_toggle_pin: Callable[[], None] | None = None,
+        pinned: bool = True,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -139,6 +143,33 @@ class HeaderBar(tk.Frame):
         self._min_btn.pack(side="right", fill="y")
         self._min_btn.bind("<Enter>", lambda e: self._min_btn.config(bg=config.btn_header_hover_bg))
         self._min_btn.bind("<Leave>", lambda e: self._min_btn.config(bg=config.header_bg))
+
+        # Always-on-top pin
+        self._pin_btn = tk.Button(
+            self,
+            command=on_toggle_pin,
+            bg=config.header_bg,
+            fg=config.text_on_header,
+            bd=0,
+            activebackground=config.btn_header_hover_bg,
+            activeforeground="#FFFFFF",
+            padx=config.spacing_md,
+            font=config.font_header,
+            cursor="hand2",
+            relief="flat",
+        )
+        self._pin_btn.pack(side="right", fill="y")
+        self._pin_btn.bind("<Enter>", lambda e: self._pin_btn.config(bg=config.btn_header_hover_bg))
+        self._pin_btn.bind("<Leave>", lambda e: self._pin_btn.config(bg=config.header_bg))
+        self.set_pinned(pinned)
+
+    def set_pinned(self, pinned: bool) -> None:
+        """Show whether the window currently stays on top."""
+        self._pin_btn.config(text=config.string("btn_pin_on" if pinned else "btn_pin_off"))
+
+    @property
+    def pin_text(self) -> str:
+        return self._pin_btn.cget("text")
 
     @property
     def draggable_widgets(self) -> list[tk.Widget]:
@@ -756,9 +787,9 @@ class FlyNotesApp:
         self.root = root
         self.root.title(config.string("app_title"))
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
         self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
         self.root.attributes("-alpha", config.active_alpha)
+        self._fade_after_id: str | None = None
 
         # Data
         self.manager = TaskManager(
@@ -777,6 +808,11 @@ class FlyNotesApp:
             on_resize_callback=self._on_window_resize,
             on_close=self._on_close,
         )
+
+        # Always on top: last session's choice, else the configured default
+        saved_on_top = load_always_on_top(self._state_file)
+        self._always_on_top = config.always_on_top if saved_on_top is None else saved_on_top
+        self._apply_always_on_top()
 
         # Drag state
         self._dragging_item: TaskItem | None = None
@@ -799,6 +835,8 @@ class FlyNotesApp:
             self.root,
             on_close=self._on_close,
             on_minimize=self.window_ctrl.minimize_window,
+            on_toggle_pin=self.toggle_always_on_top,
+            pinned=self._always_on_top,
         )
         self._header.pack(fill="x", side="top")
 
@@ -855,15 +893,9 @@ class FlyNotesApp:
         for w in self._header.draggable_widgets:
             self.window_ctrl.bind_drag(w)
 
-        self.root.bind(
-            "<FocusIn>",
-            lambda _: self.root.attributes("-alpha", config.active_alpha),
-        )
-        self.root.bind(
-            "<FocusOut>",
-            lambda _: self.root.attributes("-alpha", config.inactive_alpha),
-        )
-        self.root.bind("<Map>", lambda _: self.root.attributes("-topmost", True))
+        self.root.bind("<FocusIn>", self._on_app_focus_in)
+        self.root.bind("<FocusOut>", self._on_app_focus_out)
+        self.root.bind("<Map>", lambda _: self._apply_always_on_top())
 
         # Shortcuts
         self.root.bind(config.shortcut_close, lambda _: self._on_close())
@@ -871,6 +903,47 @@ class FlyNotesApp:
         self.root.bind(config.shortcut_delete_completed, lambda _: self._clear_completed())
         self.root.bind(config.shortcut_undo, lambda _: self._undo())
         self.root.bind(config.shortcut_edit_task, lambda _: self._edit_current_task())
+        self.root.bind(config.shortcut_toggle_always_on_top, lambda _: self.toggle_always_on_top())
+
+    # ── Always on top / inactive fade ────────
+
+    @property
+    def always_on_top(self) -> bool:
+        return self._always_on_top
+
+    def toggle_always_on_top(self) -> None:
+        """Header pin / Ctrl+T: switch between staying on top and a normal window."""
+        self._always_on_top = not self._always_on_top
+        self._apply_always_on_top()
+        self._header.set_pinned(self._always_on_top)
+
+    def _apply_always_on_top(self) -> None:
+        self.window_ctrl.always_on_top = self._always_on_top
+        self.root.attributes("-topmost", self._always_on_top)
+
+    def _on_app_focus_in(self, _event: tk.Event | None = None) -> None:
+        self._cancel_fade()
+        self.root.attributes("-alpha", config.active_alpha)
+
+    def _on_app_focus_out(self, _event: tk.Event | None = None) -> None:
+        # Focus moving between our own widgets also sends FocusOut (then FocusIn), and a
+        # quick click elsewhere shouldn't flash the window: fade only if focus stays away.
+        self._cancel_fade()
+        self._fade_after_id = self.root.after(config.inactive_fade_delay_ms, self._fade_if_inactive)
+
+    def _fade_if_inactive(self) -> None:
+        self._fade_after_id = None
+        try:
+            focused = self.root.focus_get()
+        except (KeyError, tk.TclError):
+            focused = None
+        if focused is None:
+            self.root.attributes("-alpha", config.inactive_alpha)
+
+    def _cancel_fade(self) -> None:
+        if self._fade_after_id is not None:
+            self.root.after_cancel(self._fade_after_id)
+            self._fade_after_id = None
 
     # ── Task CRUD ────────────────────────────
 
@@ -1095,8 +1168,13 @@ class FlyNotesApp:
             save_geometry(self._state_file, geometry)
         except Exception:
             logger.exception("Could not save the window position")
+        try:
+            save_always_on_top(self._state_file, self._always_on_top)
+        except Exception:
+            logger.exception("Could not save the always-on-top setting")
 
     def _on_close(self) -> None:
+        self._cancel_fade()
         try:
             self.manager.flush()
         except Exception:

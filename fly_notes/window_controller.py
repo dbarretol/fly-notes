@@ -138,6 +138,8 @@ class WindowController:
         # Called when the user closes the app from the taskbar entry. The app
         # passes its own close handler so pending saves are flushed first.
         self.on_close = on_close
+        # Kept in step by the app's always-on-top toggle; re-applied on restore.
+        self.always_on_top: bool = True
 
         # Drag state
         self._offset_x: int = 0
@@ -301,7 +303,7 @@ class WindowController:
             return
         self.root.deiconify()
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
+        self.root.attributes("-topmost", self.always_on_top)
         self.root.lift()
         self.root.focus_force()
 

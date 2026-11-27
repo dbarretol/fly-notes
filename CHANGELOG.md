@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keyboard navigation: task rows are focusable (`Tab`, or `↓` from the new-task field) and
   show a focus ring. `↑`/`↓` move between tasks, `Space` toggles, `Delete` deletes (undoable),
   `Alt+↑`/`Alt+↓` reorder within the group, and `F2`/`Enter` edit. ([#13])
+- Always on top can be switched off and on with the header pin (`▲`/`△`) or `Ctrl+T`
+  (`shortcuts.toggle_always_on_top`). The choice is saved in `state.json`; the starting value
+  is `settings.always_on_top`. ([#14])
 
 ### Changed
 
@@ -29,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contrast check now also warns when `link_color` is below 4.5:1 on `content_bg`. ([#12])
 - "Clear completed" no longer asks for confirmation, since it can be undone. The
   `confirm_clear_title` and `confirm_clear_msg` strings were removed. ([#9])
+- The unfocused window is easier to read: the default `transparency.inactive` rises from 0.45
+  to 0.75, and the fade starts only after focus has been away for
+  `settings.inactive_fade_delay_ms` (800 ms), so a quick click elsewhere doesn't make it
+  flicker. ([#14])
 
 ### Fixed
 
@@ -38,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts the same way (e.g. the 1st and 10th rows). ([#10])
 - Reordering across the hidden boundary between groups no longer leaves the on-screen order
   out of step with the saved order. ([#13])
+- Moving focus between the window's own widgets (e.g. from the new-task field to a task) no
+  longer fades the window for an instant. ([#14])
 
 ## [0.1.1] - 2026-11-26
 
@@ -92,3 +101,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#11]: https://github.com/dbarretol/fly-notes/issues/11
 [#12]: https://github.com/dbarretol/fly-notes/issues/12
 [#13]: https://github.com/dbarretol/fly-notes/issues/13
+[#14]: https://github.com/dbarretol/fly-notes/issues/14

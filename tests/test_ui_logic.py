@@ -953,6 +953,117 @@ def test_failing_to_save_geometry_still_closes(app_window, tmp_path, monkeypatch
     assert not app_window.winfo_exists()
 
 
+# ── Always on top and inactive fade (#14) ────
+
+
+def _topmost(win):
+    return bool(int(win.attributes("-topmost")))
+
+
+def test_pin_button_toggles_always_on_top(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    try:
+        assert app.always_on_top and _topmost(app_window)
+        assert app._header.pin_text == config.string("btn_pin_on")
+
+        app._header._pin_btn.invoke()
+        assert not app.always_on_top
+        assert not _topmost(app_window)
+        assert not app.window_ctrl.always_on_top  # restoring from the taskbar keeps it off
+        assert app._header.pin_text == config.string("btn_pin_off")
+
+        app.toggle_always_on_top()  # what Ctrl+T calls
+        assert app.always_on_top and _topmost(app_window)
+        assert app_window.bind(config.shortcut_toggle_always_on_top)
+    finally:
+        app._on_close()
+
+
+def test_mapping_the_window_no_longer_forces_it_on_top(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    try:
+        app.toggle_always_on_top()
+        app_window.event_generate("<Map>")
+        assert not _topmost(app_window)
+    finally:
+        app._on_close()
+
+
+def test_always_on_top_choice_is_remembered(app_window, root, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    app.toggle_always_on_top()
+    app._on_close()
+
+    second = tk.Toplevel(root)
+    second.withdraw()
+    try:
+        app2 = FlyNotesApp(second)
+        assert not app2.always_on_top
+        assert not _topmost(second)
+        assert app2._header.pin_text == config.string("btn_pin_off")
+        app2._on_close()
+    finally:
+        if second.winfo_exists():
+            second.destroy()
+
+
+def test_always_on_top_default_comes_from_config(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    monkeypatch.setitem(config._attr_cache, "always_on_top", False)
+    app = FlyNotesApp(app_window)
+    try:
+        assert not app.always_on_top and not _topmost(app_window)
+    finally:
+        app._on_close()
+
+
+def test_default_inactive_opacity_is_readable():
+    assert config.inactive_alpha >= 0.7
+
+
+def _alpha(win):
+    return round(float(win.attributes("-alpha")), 2)
+
+
+def test_window_fades_only_after_focus_stays_away(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    try:
+        monkeypatch.setattr(app_window, "focus_get", lambda: None)  # focus left the app
+        app._on_app_focus_out()
+        assert _alpha(app_window) == round(config.active_alpha, 2)  # not yet: fade is delayed
+        assert app._fade_after_id is not None
+
+        app._fade_if_inactive()  # the delay elapses
+        assert _alpha(app_window) == round(config.inactive_alpha, 2)
+
+        app._on_app_focus_in()
+        assert _alpha(app_window) == round(config.active_alpha, 2)
+    finally:
+        app._on_close()
+
+
+def test_focus_moving_inside_the_window_does_not_fade_it(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    try:
+        # e.g. entry -> task row: FocusOut then FocusIn
+        app._on_app_focus_out()
+        app._on_app_focus_in()
+        assert app._fade_after_id is None
+
+        # focus still on one of our widgets when the delay elapses
+        monkeypatch.setattr(app_window, "focus_get", lambda: app._entry_bar.entry_widget)
+        app._on_app_focus_out()
+        app._fade_if_inactive()
+        assert _alpha(app_window) == round(config.active_alpha, 2)
+    finally:
+        app._on_close()
+
+
 # ── Keyboard navigation (#13) ────────────────
 
 NAV_TASKS = [

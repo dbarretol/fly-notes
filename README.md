@@ -6,8 +6,9 @@ reliable minimize/restore using a taskbar proxy window.
 
 ## Features
 
-- **Floating & borderless widget** (always on top)
-- **Dynamic transparency** — opaque when focused, translucent when unfocused
+- **Floating & borderless widget**, always on top by default; the header pin (`▲`/`△`) or
+  `Ctrl+T` turns that off and on, and the choice is remembered
+- **Dynamic transparency** — opaque when focused, translucent shortly after it loses focus
 - **Task management**
   - Add tasks quickly (**type + Enter**); long tasks wrap onto several lines
   - Mark complete (**checkbox + strikethrough**)
@@ -48,6 +49,7 @@ _(Add a screenshot or GIF here)_
 | `F2` / double-click | Edit the task under the pointer (`Enter` saves, `Esc` cancels) |
 | `Ctrl+D` | Clear completed tasks |
 | `Ctrl+Z` | Undo the last deletion or clear (repeat to go further back) |
+| `Ctrl+T` | Toggle always on top (same as the header pin) |
 | `Ctrl+W` | Close Fly Notes |
 
 On a focused task row (highlighted with a focus ring):
@@ -159,8 +161,9 @@ defaults.
 | `FlyNotes.exe` | `%APPDATA%\FlyNotes\` (created on first save) |
 | `FlyNotes.exe`, portable | The executable's folder — used whenever a `config.json` or `tasks.json` already sits next to `FlyNotes.exe` |
 
-The window's last size and position are kept in `state.json`, next to `tasks.json`.
-Deleting it resets the window to the default size and position.
+The window's last size and position, and whether it stays on top, are kept in
+`state.json`, next to `tasks.json`. Deleting it resets the window to the default size and
+position and to `settings.always_on_top`.
 
 `settings.tasks_file` overrides the tasks file location. A relative path is resolved
 against the data folder above; an absolute path (environment variables such as

@@ -7,7 +7,9 @@ from fly_notes.window_state import (
     WindowGeometry,
     choose_geometry,
     is_reachable,
+    load_always_on_top,
     load_geometry,
+    save_always_on_top,
     save_geometry,
     state_file_for,
 )
@@ -108,3 +110,27 @@ def test_window_straddling_two_monitors_is_reachable():
 def test_size_below_minimum_is_raised_to_the_minimum():
     restored = choose(WindowGeometry(50, 40, 100, 100))
     assert (restored.width, restored.height, restored.x, restored.y) == (200, 150, 100, 100)
+
+
+# ── Always on top (#14) ──────────────────────
+
+
+def test_always_on_top_round_trips_and_keeps_the_geometry(tmp_path):
+    path = str(tmp_path / "state.json")
+    assert load_always_on_top(path) is None  # no file yet
+
+    save_geometry(path, WindowGeometry(320, 480, 10, 20))
+    save_always_on_top(path, False)
+    assert load_always_on_top(path) is False
+    assert load_geometry(path) == WindowGeometry(320, 480, 10, 20)
+
+    # ...and saving the geometry again keeps the pin choice
+    save_geometry(path, WindowGeometry(400, 500, 0, 0))
+    assert load_always_on_top(path) is False
+
+
+@pytest.mark.parametrize("content", ['{"always_on_top": "no"}', '{"always_on_top": 0}', "[1]", "{"])
+def test_invalid_always_on_top_is_ignored(tmp_path, content):
+    path = tmp_path / "state.json"
+    path.write_text(content, encoding="utf-8")
+    assert load_always_on_top(str(path)) is None
