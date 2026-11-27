@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI builds `FlyNotes.exe` on every push to `main`, after lint and tests pass, and uploads it
   with a SHA-256 checksum as a workflow artifact. ([#29])
+- Pushing a `vX.Y.Z` tag on `main` publishes the GitHub Release: a workflow checks that the
+  tag matches `pyproject.toml` and has a `CHANGELOG.md` section, runs the tests, builds
+  `FlyNotes.exe` and attaches it with a `FlyNotes.exe.sha256` file, using that section as the
+  notes. ([#30])
 
 ## [0.3.0] - 2026-11-27
 
@@ -194,3 +198,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#26]: https://github.com/dbarretol/fly-notes/issues/26
 [#27]: https://github.com/dbarretol/fly-notes/issues/27
 [#29]: https://github.com/dbarretol/fly-notes/issues/29
+[#30]: https://github.com/dbarretol/fly-notes/issues/30

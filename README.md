@@ -349,7 +349,8 @@ fly-notes/
 ├── assets/                    # Window icon
 ├── docs/images/               # README screenshot
 ├── AGENTS.md                  # Notes for coding agents and contributors
-├── .github/                   # CI workflow and pull request template
+├── .github/                   # CI and release workflows, pull request template
+├── scripts/release_notes.py   # Release notes from CHANGELOG.md (used by the release workflow)
 ├── FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
 ├── LICENSE
@@ -381,6 +382,23 @@ uv run pyinstaller FlyNotes.spec --clean
 The output is `dist/FlyNotes.exe`, a PyInstaller *onefile* build. It unpacks itself to a
 temporary folder on every launch, which is why it keeps its data in `%APPDATA%\FlyNotes` (or
 next to the `.exe` in portable mode), never in that temporary folder.
+
+### Publishing a release
+
+1. Move `[Unreleased]` in `CHANGELOG.md` to a `## [X.Y.Z] - date` section, and set the same
+   version in `pyproject.toml`.
+2. Merge the release pull request from `dev` into `main`.
+3. Tag the merge commit and push the tag:
+
+   ```powershell
+   git tag -a vX.Y.Z -m "Fly Notes X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+The [`release.yml`](.github/workflows/release.yml) workflow then checks that the tag is on
+`main`, matches the version in `pyproject.toml` and has a `CHANGELOG.md` section. It runs the
+tests, builds `FlyNotes.exe` and publishes a GitHub Release with the `.exe`, its SHA-256 file
+and that section as notes ([`scripts/release_notes.py`](scripts/release_notes.py)).
 
 ## Platform notes and limitations
 
