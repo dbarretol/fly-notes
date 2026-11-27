@@ -35,6 +35,8 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# ...except the project's own build spec
+!FlyNotes.spec
 
 # Installer logs
 pip-log.txt
