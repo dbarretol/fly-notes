@@ -19,6 +19,7 @@ from fly_notes.fly_notes_app import (
 from fly_notes.task_item import TaskItem
 from fly_notes.task_manager import TaskManager
 from fly_notes.window_controller import WindowController
+from fly_notes.window_state import Rect, WindowGeometry
 
 
 @pytest.fixture(scope="session")
@@ -885,6 +886,71 @@ def test_f2_without_a_target_does_nothing(app_window, tmp_path, monkeypatch):
         assert not any(w.is_editing for w in app._task_list.task_widgets)
     finally:
         app._on_close()
+
+
+# ── Remember window geometry (#11) ───────────
+
+
+def test_window_geometry_is_saved_on_close_and_restored(app_window, root, tmp_path, monkeypatch):
+    from fly_notes import fly_notes_app
+
+    monkeypatch.setattr(fly_notes_app, "monitor_work_areas", lambda: [Rect(0, 0, 1920, 1040)])
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    app_window.deiconify()  # Tk applies a new size only to a mapped window
+    app_window.geometry("410x520+333+222")
+    app_window.update()
+    app_window.withdraw()  # like minimizing: the last geometry must still be saved
+    app._on_close()
+
+    saved = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["window"]
+    assert saved == {"width": 410, "height": 520, "x": 333, "y": 222}
+
+    second = tk.Toplevel(root)
+    second.withdraw()
+    try:
+        app2 = FlyNotesApp(second)
+        second.update_idletasks()
+        assert WindowGeometry.from_tk(second.wm_geometry()) == WindowGeometry(410, 520, 333, 222)
+        assert int(app2._task_list._canvas.itemcget(app2._task_list._canvas_win_id, "width")) == 410
+        app2._on_close()
+    finally:
+        if second.winfo_exists():
+            second.destroy()
+
+
+def test_off_screen_saved_geometry_opens_at_the_default(app_window, tmp_path, monkeypatch):
+    from fly_notes import fly_notes_app
+
+    monkeypatch.setattr(fly_notes_app, "monitor_work_areas", lambda: [Rect(0, 0, 1920, 1040)])
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    (tmp_path / "state.json").write_text(
+        json.dumps({"window": {"width": 410, "height": 520, "x": 5000, "y": 200}}),
+        encoding="utf-8",
+    )
+    app = FlyNotesApp(app_window)
+    try:
+        app_window.update_idletasks()
+        expected = WindowGeometry(config.default_width, config.default_height, 100, 100)
+        assert WindowGeometry.from_tk(app_window.wm_geometry()) == expected
+    finally:
+        app._on_close()
+
+
+def test_failing_to_save_geometry_still_closes(app_window, tmp_path, monkeypatch, caplog):
+    from fly_notes import fly_notes_app
+
+    def boom(*args):
+        raise OSError("read-only")
+
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    monkeypatch.setattr(fly_notes_app, "save_geometry", boom)
+    app = FlyNotesApp(app_window)
+    with caplog.at_level(logging.ERROR, logger="fly_notes.fly_notes_app"):
+        app._on_close()
+
+    assert "Could not save the window position" in caplog.text
+    assert not app_window.winfo_exists()
 
 
 # ── Section header hierarchy (issues-v4 #4) ──
