@@ -4,6 +4,7 @@ Self-contained task-row widget with:
 * Hover-reveal delete button
 * Distinct completed vs pending visual states
 * Keyboard-accessible delete
+* Inline text editing (double-click or F2)
 * Drag-and-drop callbacks
 """
 
@@ -254,6 +255,7 @@ class TaskItem(tk.Frame):
         on_drag_start: Callable[[TaskItem, tk.Event], None] | None = None,
         on_drag_do: Callable[[TaskItem, tk.Event], None] | None = None,
         on_drag_stop: Callable[[TaskItem, tk.Event], None] | None = None,
+        on_text_change: Callable[[TaskItem, str], str | None] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -274,6 +276,7 @@ class TaskItem(tk.Frame):
         self._on_drag_start = on_drag_start
         self._on_drag_do = on_drag_do
         self._on_drag_stop = on_drag_stop
+        self._on_text_change = on_text_change
 
         # State
         self.completed_var = tk.BooleanVar(value=completed)
@@ -337,6 +340,8 @@ class TaskItem(tk.Frame):
         self.label.pack(side="left", fill="x", expand=True)
         # Set from the row's real width in ``_on_canvas_configure``; 0 = no wrap.
         self._wrap_width = 0
+        # Inline editor, only while editing (see begin_edit).
+        self._editor: tk.Entry | None = None
 
         # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
@@ -399,6 +404,80 @@ class TaskItem(tk.Frame):
     def _bind_keyboard(self) -> None:
         self.delete_btn.bind("<Return>", lambda e: self._handle_delete())
         self.delete_btn.bind("<space>", lambda e: self._handle_delete())
+        self.label.bind("<Double-Button-1>", lambda e: self.begin_edit())
+
+    # ── Inline edit ──────────────────────────
+
+    @property
+    def is_editing(self) -> bool:
+        return self._editor is not None
+
+    def begin_edit(self) -> None:
+        """Swap the label for an Entry holding the task text, selected and focused."""
+        if self._editor is not None:
+            return
+        self._is_dragging = False
+        editor = tk.Entry(
+            self._content,
+            bg="#FFFFFF",
+            fg=config.text_primary,
+            insertbackground=config.text_primary,
+            font=config.font_body,
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=config.border_color,
+            highlightcolor=config.border_focus,
+        )
+        editor.insert(0, self.task_text)
+        editor.select_range(0, tk.END)
+        editor.icursor(tk.END)
+        editor.bind("<Return>", self._commit_edit_event)
+        editor.bind("<KP_Enter>", self._commit_edit_event)
+        editor.bind("<Escape>", self._cancel_edit_event)
+        editor.bind("<FocusOut>", lambda e: self.commit_edit())
+        self.label.pack_forget()
+        editor.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        self._editor = editor
+        editor.focus_set()
+
+    def commit_edit(self) -> None:
+        """Save the edited text through ``on_text_change``; empty or unchanged text cancels."""
+        if self._editor is None:
+            return
+        new_text = self._editor.get()
+        saved = self._on_text_change(self, new_text) if self._on_text_change else None
+        if saved is not None:
+            self.task_text = saved
+            self.label.config(text=saved)
+        self._close_editor()
+
+    def cancel_edit(self) -> None:
+        """Discard the edit and show the original text again."""
+        if self._editor is not None:
+            self._close_editor()
+
+    def _commit_edit_event(self, event: tk.Event | None = None) -> str:
+        self.commit_edit()
+        return "break"
+
+    def _cancel_edit_event(self, event: tk.Event | None = None) -> str:
+        # "break": Escape never reaches window-level bindings while editing.
+        self.cancel_edit()
+        return "break"
+
+    def _close_editor(self) -> None:
+        editor, self._editor = self._editor, None
+        had_focus = editor is not None and editor.focus_get() is editor
+        if editor is not None:
+            editor.destroy()
+        self.label.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        if had_focus:
+            self.winfo_toplevel().focus_set()
+        self._refit()
+
+    def _pack_anchor(self) -> tk.Widget | None:
+        """The widget the label/editor must be packed before (keeps the delete button last)."""
+        return self.delete_btn if self._delete_visible else None
 
     # ── Hover ────────────────────────────────
 
@@ -437,10 +516,24 @@ class TaskItem(tk.Frame):
         """Check if the mouse pointer is still within this row's widget tree."""
         try:
             x, y = self.winfo_pointerxy()
-            w = self.winfo_containing(x, y)
-            return w is not None and (w is self or str(w).startswith(str(self)))
+            return self.contains(self.winfo_containing(x, y))
         except tk.TclError:
             return False
+
+    def contains(self, widget: tk.Misc | None) -> bool:
+        """True if *widget* is this row or one of its descendants.
+
+        Compares Tk path names on a ``.`` boundary, so ``.!taskitem1`` does
+        not claim ``.!taskitem10``'s children.
+        """
+        if widget is None:
+            return False
+        path, own = str(widget), str(self)
+        return path == own or path.startswith(own + ".")
+
+    @property
+    def is_hovered(self) -> bool:
+        return self._is_hovered
 
     def _show_delete_btn(self) -> None:
         if not self._delete_visible:
@@ -527,6 +620,15 @@ class TaskItem(tk.Frame):
             # The card's height changes: a new <Configure> follows and redraws it.
             return
         self._redraw_card(event.width, event.height)
+
+    def _refit(self) -> None:
+        """Re-wrap the label at the current width (after its text changed)."""
+        width = self.card_canvas.winfo_width()
+        if width <= 1:
+            return
+        self._wrap_width = 0
+        if not self._apply_wrap(max(1, width - 2 * self._radius)):
+            self._redraw_card()
 
     def _label_wrap_width(self, content_width: int) -> int:
         """Width available to the label inside a content frame *content_width* wide.

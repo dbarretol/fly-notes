@@ -140,6 +140,31 @@ class TaskManager:
         logger.info("Task toggled: %s → %s", task_id, result["completed"])
         return result
 
+    def update_text(self, task_id: str, text: str, max_length: int | None = None) -> Task | None:
+        """Replace a task's text; return the updated task, or ``None`` if nothing changed.
+
+        *text* is stripped and cut to *max_length* (the UI passes the same
+        ``max_task_length`` used for new tasks). Empty text is rejected, so an
+        edit can never blank a task out.
+        """
+        clean = text.strip()
+        limit = _MAX_TEXT_LENGTH if max_length is None else min(max_length, _MAX_TEXT_LENGTH)
+        clean = clean[:limit].rstrip()
+        if not clean:
+            return None
+        with self._lock:
+            idx = self._index_of_unlocked(task_id)
+            if idx is None:
+                logger.warning("update_text: id '%s' not found", task_id)
+                return None
+            if self._tasks[idx]["text"] == clean:
+                return None
+            self._tasks[idx]["text"] = clean
+            result = dict(self._tasks[idx])
+        self._schedule_save()
+        logger.info("Task edited: %s", task_id)
+        return result
+
     def reorder_tasks(self, old_idx: int, new_idx: int) -> bool:
         with self._lock:
             if not (0 <= old_idx < len(self._tasks) and 0 <= new_idx < len(self._tasks)):
