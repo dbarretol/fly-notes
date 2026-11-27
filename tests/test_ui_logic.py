@@ -412,7 +412,7 @@ def test_scroll_increment_matches_task_row_height_to_prevent_split_rows(root):
         task_list.repack()
         win.update_idletasks()
 
-        expected = widgets[0].winfo_reqheight() + 2 * config.spacing_xs
+        expected = min(w.winfo_reqheight() for w in widgets) + 2 * config.spacing_xs
         assert int(task_list._canvas["yscrollincrement"]) == expected
 
         for w in widgets:
@@ -513,6 +513,105 @@ def test_task_item_card_resizes_with_row_width(root):
         assert item.card_canvas.winfo_width() > narrow_width
 
         item.destroy()
+    finally:
+        win.destroy()
+
+
+# ── Long task text wraps (#8) ────────────────
+
+LONG_TEXT = " ".join(["wrapping"] * 25)  # ~225 characters
+
+
+def _item_in_list_of_width(root, text, width):
+    """A TaskItem inside a canvas-window inner frame, like TaskListView's rows."""
+    win = tk.Toplevel(root)
+    win.geometry(f"{width}x400+0+0")
+    canvas = tk.Canvas(win, highlightthickness=0, bd=0)
+    canvas.pack(fill="both", expand=True)
+    inner = tk.Frame(canvas)
+    win_id = canvas.create_window((0, 0), window=inner, anchor="nw", width=width)
+    item = TaskItem(inner, task_id="1", text=text)
+    item.pack(fill="x")
+    win.update()
+    return win, canvas, win_id, item
+
+
+def test_long_task_text_wraps_to_fit_the_default_width(root):
+    win, _, _, item = _item_in_list_of_width(root, LONG_TEXT, config.default_width)
+    try:
+        short_win, _, _, short_item = _item_in_list_of_width(root, "Short", config.default_width)
+        try:
+            short_height = short_item.card_canvas.winfo_height()
+        finally:
+            short_win.destroy()
+
+        wrap = int(item.label.cget("wraplength"))
+        assert 0 < wrap < config.default_width
+        # The whole text fits in the label's width: nothing is clipped at the edge.
+        assert item.label.winfo_reqwidth() <= item.label.winfo_width() + 1
+        assert item.card_canvas.winfo_height() > 2 * short_height - 20
+        assert len(item.card_canvas.find_withtag("card")) == 14
+    finally:
+        win.destroy()
+
+
+def test_long_task_text_rewraps_when_the_list_is_resized(root):
+    win, canvas, win_id, item = _item_in_list_of_width(root, LONG_TEXT, 500)
+    try:
+        wide_wrap = int(item.label.cget("wraplength"))
+        wide_height = item.card_canvas.winfo_height()
+
+        win.geometry("250x400+0+0")
+        canvas.itemconfigure(win_id, width=250)
+        win.update()
+
+        assert int(item.label.cget("wraplength")) < wide_wrap
+        assert item.card_canvas.winfo_height() > wide_height
+    finally:
+        win.destroy()
+
+
+def test_revealing_the_delete_button_does_not_rewrap_the_text(root):
+    win, _, _, item = _item_in_list_of_width(root, LONG_TEXT, config.default_width)
+    try:
+        wrap = item.label.cget("wraplength")
+        height = item.card_canvas.winfo_height()
+
+        item._show_delete_btn()
+        win.update()
+
+        assert item.label.cget("wraplength") == wrap
+        assert item.card_canvas.winfo_height() == height
+    finally:
+        win.destroy()
+
+
+def test_scroll_region_and_increment_follow_wrapped_rows(root):
+    win = tk.Toplevel(root)
+    try:
+        win.geometry("320x150+0+0")
+        task_list = TaskListView(win)
+        task_list.pack(fill="both", expand=True)
+        texts = [LONG_TEXT] + [f"Task {i}" for i in range(5)]
+        widgets = []
+        for i, text in enumerate(texts):
+            w = TaskItem(task_list.inner_frame, task_id=str(i), text=text)
+            task_list.add_widget(w)
+            widgets.append(w)
+        task_list.update_canvas_width(320)
+        task_list.repack()
+        win.update()
+
+        long_row, short_row = widgets[0], widgets[1]
+        assert long_row.winfo_height() > short_row.winfo_height()
+
+        # Step = shortest row, so a wheel notch never skips a single-line task.
+        expected = short_row.winfo_reqheight() + 2 * config.spacing_xs
+        assert int(task_list._canvas["yscrollincrement"]) == expected
+
+        # The scroll region covers the wrapped (taller) row too.
+        scroll_bottom = int(str(task_list._canvas.cget("scrollregion")).split()[3])
+        assert scroll_bottom >= task_list.inner_frame.winfo_height()
     finally:
         win.destroy()
 

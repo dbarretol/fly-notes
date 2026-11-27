@@ -361,6 +361,10 @@ class TaskListView(tk.Frame):
             pady=config.spacing_xxl,
         )
 
+        # Rows change height when their text re-wraps (e.g. on resize), so the
+        # scroll region follows the inner frame's size instead of only repack().
+        self._inner.bind("<Configure>", self._on_inner_configure)
+
         # Mousewheel on canvas & inner frame
         for w in (self._canvas, self._inner):
             w.bind("<MouseWheel>", self._on_mousewheel)
@@ -564,19 +568,25 @@ class TaskListView(tk.Frame):
             self._canvas.config(scrollregion=bbox)
         self._sync_scroll_increment()
 
+    def _on_inner_configure(self, event: tk.Event | None = None) -> None:
+        bbox = self._canvas.bbox("all")
+        if bbox:
+            self._canvas.config(scrollregion=bbox)
+        self._sync_scroll_increment()
+
     def _sync_scroll_increment(self) -> None:
-        """Quantize vertical scrolling to whole task rows.
+        """Scroll in steps of one single-line task row.
 
         Tk's canvas constrains the visible y-origin to multiples of
         ``yscrollincrement`` for every scroll source (wheel, scrollbar
-        drag/click) — so once set, a task row can never end up rendered
-        half-visible at the bottom edge; it's always fully shown or fully
-        scrolled past.
+        drag/click). Rows whose text wraps are taller, so the step is the
+        *shortest* row: a wheel notch never jumps past more than one row,
+        and lists of single-line tasks still scroll by exactly one row.
         """
         if not self._task_widgets:
             self._canvas.config(yscrollincrement=1)
             return
-        row_height = self._task_widgets[0].winfo_reqheight() + 2 * config.spacing_xs
+        row_height = min(w.winfo_reqheight() for w in self._task_widgets) + 2 * config.spacing_xs
         self._canvas.config(yscrollincrement=max(1, row_height))
 
     def _scrollbar_set(self, first: str, last: str) -> None:
