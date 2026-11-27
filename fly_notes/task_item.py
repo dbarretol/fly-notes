@@ -14,6 +14,9 @@ from collections.abc import Callable
 
 from .config import blend_alpha_hex, config
 
+# Never wrap narrower than this, so a tiny window doesn't stack one word per line.
+_MIN_WRAP_WIDTH = 60
+
 
 def draw_rounded_rect(
     canvas: tk.Canvas,
@@ -329,8 +332,11 @@ class TaskItem(tk.Frame):
             bg=self._card_fill,
             font=config.font_body,
             anchor="w",
+            justify="left",
         )
         self.label.pack(side="left", fill="x", expand=True)
+        # Set from the row's real width in ``_on_canvas_configure``; 0 = no wrap.
+        self._wrap_width = 0
 
         # ── Delete button (hidden by default) ──
         self.delete_btn = tk.Button(
@@ -361,10 +367,9 @@ class TaskItem(tk.Frame):
     def _init_card_size(self) -> None:
         """Give the card canvas an initial size before its first <Configure>.
 
-        Height is fixed for the row's lifetime (content doesn't grow/shrink
-        vertically); width is a placeholder immediately superseded once the
-        parent's geometry manager allocates the row's real width and fires
-        <Configure> (handled by ``_on_canvas_configure``).
+        Both values are placeholders: once the parent's geometry manager
+        allocates the row's real width, ``_on_canvas_configure`` wraps the
+        label to it and resizes the card to the wrapped text's height.
         """
         self._content.update_idletasks()
         content_w = self._content.winfo_reqwidth()
@@ -518,7 +523,44 @@ class TaskItem(tk.Frame):
     def _on_canvas_configure(self, event: tk.Event) -> None:
         content_width = max(1, event.width - 2 * self._radius)
         self.card_canvas.itemconfigure(self._content_win, width=content_width)
+        if self._apply_wrap(content_width):
+            # The card's height changes: a new <Configure> follows and redraws it.
+            return
         self._redraw_card(event.width, event.height)
+
+    def _label_wrap_width(self, content_width: int) -> int:
+        """Width available to the label inside a content frame *content_width* wide.
+
+        Room for the delete button is always reserved, so revealing it on
+        hover never re-wraps the text.
+        """
+        reserved = (
+            2 * config.item_padding_x
+            + self.check.winfo_reqwidth()
+            + config.spacing_md
+            + self.delete_btn.winfo_reqwidth()
+            + config.spacing_sm
+        )
+        return max(_MIN_WRAP_WIDTH, content_width - reserved)
+
+    def _apply_wrap(self, content_width: int) -> bool:
+        """Wrap the label to *content_width*; return True if the card height changed."""
+        wrap = self._label_wrap_width(content_width)
+        if wrap == self._wrap_width:
+            return False
+        self._wrap_width = wrap
+        self.label.config(wraplength=wrap)
+        # Computed from the children instead of update_idletasks(), which
+        # would flush every pending idle task in the app from inside an event.
+        content_h = (
+            max(self.label.winfo_reqheight(), self.check.winfo_reqheight())
+            + 2 * config.item_padding_y
+        )
+        height = content_h + 2 * self._radius + self._shadow_px
+        if height == int(self.card_canvas.cget("height")):
+            return False
+        self.card_canvas.config(height=height)
+        return True
 
     def _redraw_card(self, width: int | None = None, height: int | None = None) -> None:
         w = width if width is not None else self.card_canvas.winfo_width()
