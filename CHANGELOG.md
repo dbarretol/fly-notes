@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rows past `max_visible_tasks` are built only when "Show N more" reveals them. Before,
   every task got a full row at startup even if it was never shown. With 1,000 tasks the
   window opens in about 0.46 s instead of 1.1 s. ([#26])
+- Hovering, focusing, dragging or ticking a task recolours its card in place instead of
+  deleting and redrawing its 14 canvas items, and the shadow colour is computed once per
+  row. A hover now takes about a third of the time. ([#27])
 
 ### Fixed
 
@@ -176,3 +179,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#23]: https://github.com/dbarretol/fly-notes/issues/23
 [#25]: https://github.com/dbarretol/fly-notes/issues/25
 [#26]: https://github.com/dbarretol/fly-notes/issues/26
+[#27]: https://github.com/dbarretol/fly-notes/issues/27
