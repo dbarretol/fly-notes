@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import messagebox
 from typing import Any
 
@@ -223,12 +224,13 @@ class TaskEntryBar(tk.Frame):
 
 
 class FooterBar(tk.Frame):
-    """Status badge and 'clear completed' link."""
+    """Status badge, 'clear completed' link and the temporary undo notice."""
 
     def __init__(
         self,
         master: tk.Widget,
-        on_clear: callable,
+        on_clear: Callable[[], None],
+        on_undo: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -241,6 +243,8 @@ class FooterBar(tk.Frame):
         )
         self.pack_propagate(False)
         self._on_clear = on_clear
+        self._on_undo = on_undo
+        self._undo_after_id: str | None = None
 
         self._badge_label = tk.Label(
             self,
@@ -262,6 +266,58 @@ class FooterBar(tk.Frame):
         self._clear_btn.bind("<Button-1>", lambda _: self._on_clear())
         self._clear_btn.bind("<Enter>", self._on_hover)
         self._clear_btn.bind("<Leave>", self._on_leave)
+
+        # Undo notice: replaces the badge for a few seconds after a deletion.
+        self._undo_frame = tk.Frame(self, bg=config.footer_bg, bd=0, highlightthickness=0)
+        self._undo_msg = tk.Label(
+            self._undo_frame,
+            text="",
+            fg=config.text_secondary,
+            bg=config.footer_bg,
+            font=config.font_badge,
+        )
+        self._undo_msg.pack(side="left")
+        self._undo_btn = tk.Label(
+            self._undo_frame,
+            text=config.string("undo_action"),
+            fg=config.link_color,
+            bg=config.footer_bg,
+            font=(*config.font_footer[:2], "bold"),
+            cursor="hand2",
+        )
+        self._undo_btn.pack(side="left", padx=(config.spacing_sm, 0))
+        self._undo_btn.bind("<Button-1>", lambda _: self._undo_clicked())
+        self._undo_visible = False
+
+    @property
+    def undo_visible(self) -> bool:
+        return self._undo_visible
+
+    def show_undo(self, message: str) -> None:
+        """Show "<message> · Undo" in place of the badge, for ``undo_timeout_ms``."""
+        self._cancel_undo_timer()
+        self._undo_msg.config(text=message)
+        if not self._undo_visible:
+            self._badge_label.pack_forget()
+            self._undo_frame.pack(side="left", padx=config.spacing_lg)
+            self._undo_visible = True
+        self._undo_after_id = self.after(config.undo_timeout_ms, self.hide_undo)
+
+    def hide_undo(self) -> None:
+        self._cancel_undo_timer()
+        if self._undo_visible:
+            self._undo_frame.pack_forget()
+            self._badge_label.pack(side="left", padx=config.spacing_lg)
+            self._undo_visible = False
+
+    def _cancel_undo_timer(self) -> None:
+        if self._undo_after_id is not None:
+            self.after_cancel(self._undo_after_id)
+            self._undo_after_id = None
+
+    def _undo_clicked(self) -> None:
+        if self._on_undo:
+            self._on_undo()
 
     def update_counts(self, total: int, done: int) -> None:
         if total == 0:
@@ -404,8 +460,16 @@ class TaskListView(tk.Frame):
     def inner_frame(self) -> tk.Frame:
         return self._inner
 
-    def add_widget(self, widget: TaskItem) -> None:
-        self._task_widgets.append(widget)
+    def add_widget(self, widget: TaskItem, index: int | None = None) -> None:
+        """Add *widget* at *index* of the insertion order (the end by default).
+
+        The insertion order mirrors the TaskManager's list, so a restored task
+        is inserted at its model index.
+        """
+        if index is None:
+            self._task_widgets.append(widget)
+        else:
+            self._task_widgets.insert(index, widget)
         # Propagate scroll events
         for child in (widget, widget.card_canvas, widget.label, widget.check, widget.delete_btn):
             child.bind("<MouseWheel>", self._on_mousewheel)
@@ -686,7 +750,7 @@ class FlyNotesApp:
             bd=0,
         )
 
-        self._footer = FooterBar(self.root, on_clear=self._clear_completed)
+        self._footer = FooterBar(self.root, on_clear=self._clear_completed, on_undo=self._undo)
 
         # Pack order: footer at bottom, then separator above it
         self._footer.pack(fill="x", side="bottom")
@@ -735,6 +799,7 @@ class FlyNotesApp:
         self.root.bind(config.shortcut_close, lambda _: self._on_close())
         self.root.bind(config.shortcut_new_task, lambda _: self._entry_bar.focus_entry())
         self.root.bind(config.shortcut_delete_completed, lambda _: self._clear_completed())
+        self.root.bind(config.shortcut_undo, lambda _: self._undo())
 
     # ── Task CRUD ────────────────────────────
 
@@ -743,7 +808,7 @@ class FlyNotesApp:
         self._create_task_widget(task)
         self._refresh_ui()
 
-    def _create_task_widget(self, task: dict[str, Any]) -> TaskItem:
+    def _create_task_widget(self, task: dict[str, Any], index: int | None = None) -> TaskItem:
         widget = TaskItem(
             self._task_list.inner_frame,
             task_id=task["id"],
@@ -755,7 +820,7 @@ class FlyNotesApp:
             on_drag_do=self._do_reorder,
             on_drag_stop=self._stop_reorder,
         )
-        self._task_list.add_widget(widget)
+        self._task_list.add_widget(widget, index=index)
         return widget
 
     def _delete_task(self, item: TaskItem) -> None:
@@ -766,28 +831,35 @@ class FlyNotesApp:
             )
             if not ok:
                 return
-        self.manager.delete_task(item.task_id)
+        if self.manager.delete_task(item.task_id) is None:
+            return
         self._task_list.remove_widget(item)
         self._refresh_ui()
+        self._footer.show_undo(config.string("undo_deleted"))
 
     def _toggle_task(self, item: TaskItem) -> None:
         self.manager.toggle_task(item.task_id)
         self._refresh_ui()
 
     def _clear_completed(self) -> None:
-        count = self.manager.completed_count
+        # No confirmation dialog: the clear can be undone from the footer or Ctrl+Z.
+        count = self.manager.clear_completed()
         if count == 0:
             return
-        ok = messagebox.askyesno(
-            config.string("confirm_clear_title"),
-            config.string("confirm_clear_msg", count=count),
-        )
-        if not ok:
-            return
-        self.manager.clear_completed()
         to_remove = [w for w in self._task_list.task_widgets if w.completed_var.get()]
         for w in to_remove:
             self._task_list.remove_widget(w)
+        self._refresh_ui()
+        self._footer.show_undo(config.string("undo_cleared", count=count))
+
+    def _undo(self) -> None:
+        """Bring back the most recently deleted or cleared task(s) in place."""
+        restored = self.manager.undo()
+        self._footer.hide_undo()
+        if not restored:
+            return
+        for task in restored:
+            self._create_task_widget(task, index=self.manager.index_of(task["id"]))
         self._refresh_ui()
 
     # ── Drag-and-drop (model-safe) ───────────
