@@ -18,6 +18,15 @@ from .config import blend_alpha_hex, config
 from .task_item import TaskItem
 from .task_manager import TaskManager
 from .window_controller import WindowController
+from .window_state import (
+    Rect,
+    WindowGeometry,
+    choose_geometry,
+    load_geometry,
+    monitor_work_areas,
+    save_geometry,
+    state_file_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -693,7 +702,6 @@ class FlyNotesApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(config.string("app_title"))
-        self.root.geometry(f"{config.default_width}x{config.default_height}+100+100")
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.root.config(bg=config.content_bg, highlightthickness=0, bd=0)
@@ -704,6 +712,11 @@ class FlyNotesApp:
             tasks_file=config.tasks_file,
             error_callback=self._handle_error_threadsafe,
         )
+
+        # Window geometry: last session's size/position, if still on a monitor
+        self._state_file = state_file_for(config.tasks_file)
+        self._initial_geometry = self._restored_geometry()
+        self.root.geometry(self._initial_geometry.to_tk())
 
         # Window controller
         self.window_ctrl = WindowController(
@@ -719,6 +732,8 @@ class FlyNotesApp:
         self._build_ui()
         self._bind_events()
         self.window_ctrl.setup_resize_handles(config.content_bg)
+        # The list's canvas starts at default_width; match the restored width.
+        self._on_window_resize(self._initial_geometry.width)
         self._load_initial_tasks()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -946,10 +961,32 @@ class FlyNotesApp:
         """Schedule error dialog on the main Tkinter thread."""
         self.root.after(0, lambda: messagebox.showerror(config.string("app_title"), message))
 
+    def _restored_geometry(self) -> WindowGeometry:
+        default = WindowGeometry(config.default_width, config.default_height, 100, 100)
+        monitors = monitor_work_areas() or [
+            Rect(0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+        ]
+        return choose_geometry(
+            load_geometry(self._state_file),
+            default,
+            monitors,
+            min_width=config.min_width,
+            min_height=config.min_height,
+        )
+
+    def _save_window_geometry(self) -> None:
+        try:
+            # wm geometry keeps the last size/position even while minimized (withdrawn).
+            geometry = WindowGeometry.from_tk(self.root.wm_geometry())
+            save_geometry(self._state_file, geometry)
+        except Exception:
+            logger.exception("Could not save the window position")
+
     def _on_close(self) -> None:
         try:
             self.manager.flush()
         except Exception:
             # Closing must still succeed, but a failed final save must not be silent.
             logger.exception("Could not save tasks while closing")
+        self._save_window_geometry()
         self.root.destroy()
