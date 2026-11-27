@@ -20,6 +20,9 @@ reliable minimize/restore using a taskbar proxy window.
 - **8-direction manual resizing**: drag any edge or corner
 - **Reliable minimize/restore on Windows 11**, via a **Taskbar Proxy Window** strategy
 - **Debounced, atomic persistence** to a local `tasks.json` (survives crashes mid-write)
+  - The previous version is kept as `tasks.json.bak`. If `tasks.json` ever becomes
+    unreadable, it is moved aside as `tasks.corrupt-<timestamp>.json` (never overwritten)
+    and the backup is restored automatically.
 - **Fully configurable** — colors, spacing, fonts, shortcuts and behavior via `config.json`
 
 ## Screens / Demo

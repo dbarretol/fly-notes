@@ -176,4 +176,6 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python
 # Local user data (never commit)
 tasks.json
+tasks.json.bak
+tasks.corrupt-*.json
 config.json
