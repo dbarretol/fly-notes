@@ -31,7 +31,7 @@ import sys
 import tkinter as tk
 from collections.abc import Callable
 
-from .config import ICON_PATH, config
+from ..config import ICON_PATH, config
 
 logger = logging.getLogger(__name__)
 
