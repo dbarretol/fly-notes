@@ -8,23 +8,20 @@ and writes to disk outside it.
 
 from __future__ import annotations
 
-import copy
 import json
 import logging
 import os
 import shutil
 import tempfile
 import threading
-import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
-from typing import Any
+
+from .task import MAX_TEXT_LENGTH, Task
 
 logger = logging.getLogger(__name__)
 
-Task = dict[str, Any]
-
-_MAX_TEXT_LENGTH = 10_000  # Hard safety limit for loaded task text
 _UNDO_LIMIT = 20  # Deletions remembered for undo (each "clear completed" counts as one)
 
 
@@ -61,11 +58,12 @@ class TaskManager:
         """Rolling copy of the previous tasks file, refreshed before every save."""
         return self.tasks_file + ".bak"
 
-    # ── Read access (thread-safe copies) ─────
+    # ── Read access (thread-safe) ────────────
+    # Tasks are immutable, so handing them out needs no copy: only the list is copied.
 
     @property
     def tasks(self) -> list[Task]:
-        """Return a shallow copy of the task list."""
+        """Return a copy of the task list."""
         with self._lock:
             return list(self._tasks)
 
@@ -77,18 +75,18 @@ class TaskManager:
     @property
     def completed_count(self) -> int:
         with self._lock:
-            return sum(1 for t in self._tasks if t["completed"])
+            return sum(1 for t in self._tasks if t.completed)
 
     @property
     def pending_count(self) -> int:
         with self._lock:
-            return len(self._tasks) - sum(1 for t in self._tasks if t["completed"])
+            return len(self._tasks) - sum(1 for t in self._tasks if t.completed)
 
     def task_by_id(self, task_id: str) -> Task | None:
         with self._lock:
             for t in self._tasks:
-                if t["id"] == task_id:
-                    return dict(t)  # Return a copy
+                if t.id == task_id:
+                    return t
         return None
 
     def index_of(self, task_id: str) -> int:
@@ -98,24 +96,20 @@ class TaskManager:
         """
         with self._lock:
             for i, t in enumerate(self._tasks):
-                if t["id"] == task_id:
+                if t.id == task_id:
                     return i
         raise ValueError(f"Task id '{task_id}' not found")
 
     # ── CRUD ─────────────────────────────────
 
     def add_task(self, text: str, completed: bool = False) -> Task:
-        task: Task = {
-            "id": uuid.uuid4().hex,
-            "text": text,
-            "completed": completed,
-        }
+        task = Task.new(text, completed)
         with self._lock:
             self._tasks.append(task)
         self._schedule_save()
         # Only the id: task text is user content and stays out of the logs.
-        logger.info("Task added: id=%s", task["id"])
-        return dict(task)
+        logger.info("Task added: id=%s", task.id)
+        return task
 
     def delete_task(self, task_id: str) -> Task | None:
         with self._lock:
@@ -134,10 +128,10 @@ class TaskManager:
             idx = self._index_of_unlocked(task_id)
             if idx is None:
                 return None
-            self._tasks[idx]["completed"] = not self._tasks[idx]["completed"]
-            result = dict(self._tasks[idx])
+            result = replace(self._tasks[idx], completed=not self._tasks[idx].completed)
+            self._tasks[idx] = result
         self._schedule_save()
-        logger.info("Task toggled: %s → %s", task_id, result["completed"])
+        logger.info("Task toggled: %s → %s", task_id, result.completed)
         return result
 
     def update_text(self, task_id: str, text: str, max_length: int | None = None) -> Task | None:
@@ -148,7 +142,7 @@ class TaskManager:
         edit can never blank a task out.
         """
         clean = text.strip()
-        limit = _MAX_TEXT_LENGTH if max_length is None else min(max_length, _MAX_TEXT_LENGTH)
+        limit = MAX_TEXT_LENGTH if max_length is None else min(max_length, MAX_TEXT_LENGTH)
         clean = clean[:limit].rstrip()
         if not clean:
             return None
@@ -157,10 +151,10 @@ class TaskManager:
             if idx is None:
                 logger.warning("update_text: id '%s' not found", task_id)
                 return None
-            if self._tasks[idx]["text"] == clean:
+            if self._tasks[idx].text == clean:
                 return None
-            self._tasks[idx]["text"] = clean
-            result = dict(self._tasks[idx])
+            result = replace(self._tasks[idx], text=clean)
+            self._tasks[idx] = result
         self._schedule_save()
         logger.info("Task edited: %s", task_id)
         return result
@@ -176,8 +170,8 @@ class TaskManager:
 
     def clear_completed(self) -> int:
         with self._lock:
-            cleared = [(i, t) for i, t in enumerate(self._tasks) if t["completed"]]
-            self._tasks = [t for t in self._tasks if not t["completed"]]
+            cleared = [(i, t) for i, t in enumerate(self._tasks) if t.completed]
+            self._tasks = [t for t in self._tasks if not t.completed]
             removed = len(cleared)
             if cleared:
                 self._push_undo(cleared)
@@ -197,19 +191,19 @@ class TaskManager:
 
         Each task goes back to the index it had before it was removed (or
         the end of the list, if the list has since become shorter). Returns
-        copies of the restored tasks in list order; empty if nothing to undo.
+        the restored tasks in list order; empty if nothing to undo.
         """
         with self._lock:
             if not self._undo_stack:
                 return []
             entry = self._undo_stack.pop()
-            present = {t["id"] for t in self._tasks}
+            present = {t.id for t in self._tasks}
             restored: list[Task] = []
             for idx, task in entry:
-                if task["id"] in present:
+                if task.id in present:
                     continue
                 self._tasks.insert(min(idx, len(self._tasks)), task)
-                restored.append(dict(task))
+                restored.append(task)
         if restored:
             self._schedule_save()
         logger.info("Undo restored %d task(s)", len(restored))
@@ -249,7 +243,7 @@ class TaskManager:
             return
 
         with self._lock:
-            snapshot = copy.deepcopy(self._tasks)
+            snapshot = [t.to_dict() for t in self._tasks]
 
         try:
             dir_name = os.path.dirname(self.tasks_file) or "."
@@ -318,7 +312,7 @@ class TaskManager:
         skipped = 0
         for item in data:
             try:
-                sanitised.append(self._sanitise_task(item))
+                sanitised.append(Task.from_dict(item))
             except (TypeError, ValueError) as exc:
                 skipped += 1
                 logger.warning("Skipping malformed task: %s", exc)
@@ -388,30 +382,6 @@ class TaskManager:
         if self.error_callback:
             self.error_callback(message)
 
-    @staticmethod
-    def _sanitise_task(raw: Any) -> Task:
-        """Validate and normalise a single task dict.
-
-        Raises ``TypeError`` if *raw* is not a dict.
-        """
-        if not isinstance(raw, dict):
-            raise TypeError(f"Task must be a dict, got {type(raw).__name__}")
-
-        text = str(raw.get("text", ""))
-        if len(text) > _MAX_TEXT_LENGTH:
-            text = text[:_MAX_TEXT_LENGTH]
-            logger.warning("Truncated oversized task text to %d chars", _MAX_TEXT_LENGTH)
-
-        task_id = raw.get("id")
-        if not isinstance(task_id, str) or not task_id.strip():
-            task_id = uuid.uuid4().hex
-
-        return {
-            "id": task_id,
-            "text": text,
-            "completed": bool(raw.get("completed", False)),
-        }
-
     # ── Internal helpers ─────────────────────
 
     def _index_of_unlocked(self, task_id: str) -> int | None:
@@ -421,6 +391,6 @@ class TaskManager:
         Returns ``None`` instead of raising if not found.
         """
         for i, t in enumerate(self._tasks):
-            if t["id"] == task_id:
+            if t.id == task_id:
                 return i
         return None
