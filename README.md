@@ -69,15 +69,16 @@ uv run main.py
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
-python main.py
+fly-notes            # or: python -m fly_notes
 ```
 
 ## Project Structure
 
 ```
 FLY_NOTES/
-├── main.py                    # Entry point: platform setup, logging, Tk root, mainloop
+├── main.py                    # Thin launcher (also the PyInstaller entry script)
 ├── fly_notes/
+│   ├── __main__.py            # Bootstrap: platform setup, logging, Tk root, mainloop
 │   ├── config.py              # DEFAULT_CONFIG, validation, config.json loading/merging
 │   ├── paths.py               # Where config/data live (source, installed .exe, portable .exe)
 │   ├── task_manager.py        # Task CRUD + debounced atomic JSON persistence (no Tkinter)
@@ -218,4 +219,4 @@ Output: `dist/FlyNotes.exe`
 
 ## License
 
-MIT
+[MIT](LICENSE)
