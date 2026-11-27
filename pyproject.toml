@@ -20,6 +20,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pyinstaller",
+    "pyright>=1.1.414",
     "pytest",
     "pytest-cov>=7.1.0",
     "ruff>=0.17",
@@ -45,7 +46,7 @@ target-version = "py312"
 extend-exclude = ["build", "dist"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "RUF"]
+select = ["E", "F", "W", "I", "UP", "B", "RUF", "PLC0415"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -54,3 +55,9 @@ markers = ["gui: needs a Tk display (added automatically to tests that use the r
 # An exception swallowed in a __del__ or thread (e.g. Tk objects freed off the main
 # thread) fails the run instead of scrolling past as a warning.
 filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
+
+[tool.pyright]
+include = ["fly_notes", "tests"]
+pythonVersion = "3.12"
+pythonPlatform = "Windows"
+typeCheckingMode = "standard"
