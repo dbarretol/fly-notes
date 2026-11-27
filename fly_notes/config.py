@@ -100,6 +100,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "group_completed": True,
         "separator_height": 1,
         "scrollbar_width": 8,
+        # Colour preset: "light" (the colours above) or "dark" (DARK_COLORS). Colours set
+        # in config.json are applied on top of the preset.
+        "theme": "light",
     },
     "fonts": {
         "header": ["Segoe UI", 10, "bold"],
@@ -142,6 +145,51 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "btn_pin_on": "▲",
         "btn_pin_off": "△",
     },
+}
+
+
+# The "dark" preset: replaces every colour token, keeping the same accent hue.
+DARK_COLORS: dict[str, str] = {
+    # Surfaces
+    "header_bg": "#8B4500",
+    "content_bg": "#1F1A17",
+    "item_bg": "#2B2420",
+    "item_bg_completed": "#24201D",
+    "footer_bg": "#26201C",
+    "separator_color": "#3A302A",
+    # Text
+    "text_primary": "#F2E8DF",
+    "text_secondary": "#C9B8A8",
+    "text_completed": "#A89888",
+    "text_on_header": "#FFFFFF",
+    "text_placeholder": "#8C7E72",
+    "section_header": "#F0A050",
+    # Interactive
+    "border_color": "#4A3D33",
+    "border_focus": "#F08A24",
+    "btn_danger_bg": "#C82333",
+    "btn_danger_hover": "#A71D2A",
+    "btn_close_hover_bg": "#C82333",
+    "btn_header_hover_bg": "#6B3500",
+    "link_color": "#F0A050",
+    "link_hover": "#FFC07A",
+    # Feedback
+    "drag_highlight": "#4A3220",
+    "drag_border": "#F08A24",
+    "checkbox_check": "#B35C00",
+    "checkbox_bg": "#2B2420",
+    "checkbox_border": "#8C7A6A",
+    "checkbox_hover_bg": "#3A2E26",
+    "scrollbar_thumb": "#7A5A3A",
+    "scrollbar_track": "#1F1A17",
+    # State
+    "shadow_color": "#00000060",
+    "empty_state_fg": "#9A8B7E",
+}
+
+THEMES: dict[str, dict[str, str]] = {
+    "light": dict(DEFAULT_CONFIG["colors"]),
+    "dark": DARK_COLORS,
 }
 
 
@@ -309,6 +357,12 @@ def _validate_settings(settings: dict[str, Any]) -> None:
         if key in settings and not isinstance(settings[key], bool):
             raise ValueError(f"settings.{key}: must be true or false, got {settings[key]!r}")
 
+    if "theme" in settings and settings["theme"] not in THEMES:
+        raise ValueError(
+            f"settings.theme: must be one of {', '.join(map(repr, THEMES))}, "
+            f"got {settings['theme']!r}"
+        )
+
     if "tasks_file" in settings:
         tf = settings["tasks_file"]
         if not isinstance(tf, str) or not tf.strip():
@@ -445,6 +499,7 @@ class Settings:
     group_completed: bool
     separator_height: int
     scrollbar_width: int
+    theme: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,13 +604,17 @@ class AppConfig:
 # ──────────────────────────────────────────────
 
 
-def default_config(tasks_file: str | os.PathLike[str] | None = None) -> AppConfig:
+def default_config(
+    tasks_file: str | os.PathLike[str] | None = None, theme: str = "light"
+) -> AppConfig:
     """The built-in defaults, without reading ``config.json``.
 
     *tasks_file* overrides ``settings.tasks_file`` (tests point it at a
     temporary folder); otherwise it is the default path for the data folder.
+    *theme* picks the colour preset.
     """
     data = copy.deepcopy(DEFAULT_CONFIG)
+    _apply_theme(data, theme)
     if tasks_file is not None:
         data["settings"]["tasks_file"] = str(tasks_file)
     return AppConfig.from_dict(data)
@@ -580,6 +639,8 @@ def load_config(
                 user_cfg = json.load(fh)
             if not isinstance(user_cfg, dict):
                 raise TypeError(f"Config root must be a dict, got {type(user_cfg).__name__}")
+            # The preset goes first, so colours set in the file override it.
+            _apply_theme(data, _requested_theme(user_cfg))
             _deep_merge(data, user_cfg)
             _validate_structure(data)
             logger.info("User config loaded from %s", config_file)
@@ -592,6 +653,20 @@ def load_config(
     settings["tasks_file"] = str(paths.resolve_data_path(settings["tasks_file"]))
     logger.info("Data mode: %s — tasks file: %s", paths.mode, settings["tasks_file"])
     return AppConfig.from_dict(data)
+
+
+def _requested_theme(user_cfg: dict[str, Any]) -> str:
+    settings = user_cfg.get("settings")
+    theme = settings.get("theme", "light") if isinstance(settings, dict) else "light"
+    _validate_settings({"theme": theme})
+    return theme
+
+
+def _apply_theme(data: dict[str, Any], theme: str) -> None:
+    """Set the colours and ``settings.theme`` of *data* to the *theme* preset."""
+    _validate_settings({"theme": theme})
+    data["colors"].update(THEMES[theme])
+    data["settings"]["theme"] = theme
 
 
 def _validate_structure(data: dict[str, Any]) -> None:

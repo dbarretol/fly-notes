@@ -298,7 +298,7 @@ class TaskItem(tk.Frame):
         self._is_dragging = False
         editor = tk.Entry(
             self._content,
-            bg="#FFFFFF",
+            bg=self._cfg.colors.item_bg,
             fg=self._cfg.colors.text_primary,
             insertbackground=self._cfg.colors.text_primary,
             font=self._cfg.fonts.body,

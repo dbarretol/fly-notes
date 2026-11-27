@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-27
+
+First stable release. It adds an optional dark theme, and releases are now built and published
+by CI from a version tag. `tasks.json`, `state.json` and `config.json` need no changes.
+
+### Added
+
+- Optional dark theme: set `settings.theme` to `"dark"` in `config.json`. Colors set in
+  `colors` still override the preset, and both presets pass the same contrast checks. ([#65])
+- CI builds `FlyNotes.exe` on every push to `main`, after lint and tests pass, and uploads it
+  with a SHA-256 checksum as a workflow artifact. ([#29])
+- Pushing a `vX.Y.Z` tag on `main` publishes the GitHub Release: a workflow checks that the
+  tag matches `pyproject.toml` and has a `CHANGELOG.md` section, runs the tests, builds
+  `FlyNotes.exe` and attaches it with a `FlyNotes.exe.sha256` file, using that section as the
+  notes. ([#30])
+- Dependabot opens weekly pull requests against `dev` that update the GitHub Actions and the
+  development tools in `uv.lock`. ([#32])
+- The README shows how to check a downloaded `FlyNotes.exe` against its published SHA-256. The
+  `.exe` stays unsigned. ([#32])
+- The README explains how display scaling works on a second monitor with a different scaling,
+  and why the window isn't rescaled there. ([#66])
+
+### Fixed
+
+- The new-task field and the inline editor take their background from `item_bg` instead of a
+  fixed white, so they follow the theme. ([#65])
+
 ## [0.3.0] - 2026-11-27
 
 Maintenance and speed release: the code is reorganized, typed and better tested, and long
@@ -158,7 +185,8 @@ the packaged `FlyNotes.exe`.
 Initial version: floating, always-on-top task widget with drag-to-reorder, grouping of
 completed tasks, configurable theme and taskbar-friendly minimize/restore.
 
-[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/dbarretol/fly-notes/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dbarretol/fly-notes/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/dbarretol/fly-notes/releases/tag/v0.1.1
@@ -188,3 +216,8 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#25]: https://github.com/dbarretol/fly-notes/issues/25
 [#26]: https://github.com/dbarretol/fly-notes/issues/26
 [#27]: https://github.com/dbarretol/fly-notes/issues/27
+[#29]: https://github.com/dbarretol/fly-notes/issues/29
+[#30]: https://github.com/dbarretol/fly-notes/issues/30
+[#32]: https://github.com/dbarretol/fly-notes/issues/32
+[#65]: https://github.com/dbarretol/fly-notes/issues/65
+[#66]: https://github.com/dbarretol/fly-notes/issues/66

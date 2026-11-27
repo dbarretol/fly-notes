@@ -7,7 +7,10 @@ import pytest
 
 from fly_notes import config as config_module
 from fly_notes.config import (
+    _CONTRAST_PAIRS,
+    DARK_COLORS,
     DEFAULT_CONFIG,
+    THEMES,
     _contrast_ratio,
     _deep_merge,
     _hex_to_rgb,
@@ -321,3 +324,52 @@ def test_removed_animation_ms_is_ignored_not_an_error(tmp_path, caplog):
         cfg = load_config(config_file, _paths(tmp_path))
     assert cfg.settings.min_width == 250
     assert "settings.animation_ms" in caplog.text
+
+
+# ── Themes (#65) ──────────────────────────────
+
+
+def test_every_theme_sets_every_colour_and_passes_the_contrast_checks():
+    for name, colors in THEMES.items():
+        assert set(colors) == set(DEFAULT_CONFIG["colors"]), name
+        _validate_colors(colors)
+        for fg, bg, minimum in _CONTRAST_PAIRS:
+            assert _contrast_ratio(colors[fg], colors[bg]) >= minimum, (name, fg, bg)
+
+
+def test_light_is_the_default_theme(cfg):
+    assert cfg.settings.theme == "light"
+    assert dataclasses.asdict(cfg.colors) == DEFAULT_CONFIG["colors"]
+
+
+def test_default_config_can_use_the_dark_theme():
+    cfg = default_config(theme="dark")
+    assert cfg.settings.theme == "dark"
+    assert dataclasses.asdict(cfg.colors) == DARK_COLORS
+
+
+def test_load_config_applies_the_dark_preset(tmp_path):
+    config_file = _write(tmp_path / "config.json", {"settings": {"theme": "dark"}})
+    cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.settings.theme == "dark"
+    assert dataclasses.asdict(cfg.colors) == DARK_COLORS
+
+
+def test_colours_in_the_file_override_the_preset(tmp_path):
+    config_file = _write(
+        tmp_path / "config.json",
+        {"settings": {"theme": "dark"}, "colors": {"header_bg": "#123456"}},
+    )
+    cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.colors.header_bg == "#123456"
+    assert cfg.colors.content_bg == DARK_COLORS["content_bg"]
+
+
+@pytest.mark.parametrize("theme", ["Dark", "blue", "", None, 1])
+def test_an_unknown_theme_falls_back_to_the_defaults(tmp_path, caplog, theme):
+    config_file = _write(tmp_path / "config.json", {"settings": {"theme": theme, "min_width": 250}})
+    with caplog.at_level(logging.WARNING, logger="fly_notes.config"):
+        cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.settings.theme == "light"
+    assert cfg.settings.min_width == DEFAULT_CONFIG["settings"]["min_width"]
+    assert "settings.theme" in caplog.text

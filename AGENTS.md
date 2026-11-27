@@ -23,5 +23,7 @@ runtime dependencies.
   Windows-only `ctypes` imports inside a `try` that falls back when they fail; they carry
   a `# noqa: PLC0415` with the reason.
 - Record user-visible changes under `[Unreleased]` in `CHANGELOG.md`.
+- Releases are published by pushing a `vX.Y.Z` tag on `main` (`.github/workflows/release.yml`).
+  The tag must match the version in `pyproject.toml`, and `CHANGELOG.md` must have its section.
 - `tasks.json`, `config.json` and `state.json` hold personal data. Never commit them, and use a
   temporary or portable data folder when running the app for tests.

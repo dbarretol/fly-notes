@@ -23,6 +23,10 @@ def _configure_platform() -> None:
         try:
             import ctypes  # noqa: PLC0415 -- Windows-only, inside the guard
 
+            # 1 = system aware: sharp on the main display; Windows stretches (and blurs)
+            # the window on a monitor with another scaling. Per-monitor awareness (2) would
+            # need every font and pixel size rebuilt on WM_DPICHANGED, which Tk 8.6 doesn't
+            # do, so the window would just stay the wrong size there (#66, README).
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (ImportError, AttributeError, OSError):
             pass
