@@ -439,3 +439,65 @@ def test_packing_follows_the_visual_order_through_any_sequence_of_changes(
                     )
     finally:
         task_list.destroy()
+
+
+# ── Lazy rows (#26) ───────────────────────────
+
+
+def test_rows_past_the_cap_are_built_only_when_shown(root, cfg):
+    cfg = cfg.with_settings(max_visible_tasks=3)
+    task_list = TaskListView(root, cfg)
+    built = []
+
+    def factory(i):
+        def create():
+            built.append(str(i))
+            return TaskItem(task_list.inner_frame, cfg, task_id=str(i), text=f"Task {i}")
+
+        return create
+
+    try:
+        for i in range(8):
+            task_list.add_lazy(str(i), False, factory(i))
+        assert built == []
+
+        task_list.repack()
+        assert built == ["0", "1", "2"]
+        assert task_list.row_count == 8
+        link = _show_more_link(task_list)
+        assert link is not None
+        assert link.cget("text") == cfg.string("more_hidden_paged", count=3, hidden=5)
+
+        task_list.show_more()
+        assert built == ["0", "1", "2", "3", "4", "5"]
+        assert [w.task_id for w in _packed_rows(task_list)] == ["0", "1", "2", "3", "4", "5"]
+    finally:
+        task_list.destroy()
+
+
+def test_a_lazy_row_keeps_its_group_and_can_be_removed(root, cfg):
+    cfg = cfg.with_settings(max_visible_tasks=2)
+    task_list = TaskListView(root, cfg)
+
+    def create(i, done):
+        return lambda: TaskItem(
+            task_list.inner_frame, cfg, task_id=str(i), text="t", completed=done
+        )
+
+    try:
+        for i, done in enumerate([True, False, False, True]):
+            task_list.add_lazy(str(i), done, create(i, done))
+        task_list.repack()
+
+        # Pending first: the two pending rows are the ones built and shown.
+        assert [r.task_id for r in task_list.visual_order()] == ["1", "2", "0", "3"]
+        assert [w.task_id for w in task_list.task_widgets] == ["1", "2"]
+
+        task_list.remove_task("3")  # never built
+        task_list.repack()
+        assert task_list.row_count == 3
+        link = _show_more_link(task_list)
+        assert link is not None
+        assert link.cget("text") == cfg.string("more_hidden", count=1)
+    finally:
+        task_list.destroy()

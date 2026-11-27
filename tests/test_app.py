@@ -651,3 +651,38 @@ def test_a_shortcut_tk_rejects_falls_back_to_the_default(app_window, cfg, caplog
     assert "shortcuts.undo" in caplog.text
     assert app_window.bind("<Control-z>")
     assert app_window.bind(cfg.shortcuts.new_task)  # the others are still bound
+
+
+# ── Lazy rows (#26) ───────────────────────────
+
+MANY_TASKS = [{"id": str(i), "text": f"T{i}", "completed": i % 2 == 1} for i in range(10)]
+
+
+def test_startup_builds_only_the_rows_it_shows(app_window, cfg):
+    app = _app_with_tasks(app_window, cfg.with_settings(max_visible_tasks=3), MANY_TASKS)
+    assert app._task_list.row_count == 10
+    assert [w.task_id for w in app._task_list.task_widgets] == ["0", "2", "4"]
+
+
+def test_clear_completed_also_removes_rows_never_built(app_window, cfg):
+    app = _app_with_tasks(app_window, cfg.with_settings(max_visible_tasks=3), MANY_TASKS)
+    app._clear_completed()
+    assert app._task_list.row_count == 5
+    assert all(not r.completed_var.get() for r in app._task_list.visual_order())
+
+    app._undo()
+    assert app._task_list.row_count == 10
+    assert [r.task_id for r in app._task_list.visual_order()] == [
+        str(i) for i in (0, 2, 4, 6, 8, 1, 3, 5, 7, 9)
+    ]
+
+
+def test_moving_the_last_shown_row_past_the_cap(app_window, cfg):
+    app = _app_with_tasks(app_window, cfg.with_settings(max_visible_tasks=3), MANY_TASKS)
+    last = app._task_list.packed_order()[-1]
+    assert last.task_id == "4"
+
+    app._move_task(last, +1)  # swaps with "6", whose row was never built
+
+    assert [t.id for t in app.manager.tasks if not t.completed] == ["0", "2", "6", "4", "8"]
+    assert [w.task_id for w in app._task_list.packed_order()] == ["0", "2", "6"]
