@@ -299,7 +299,7 @@ def test_resize_callback_receives_width_without_stale_reread(root):
     root.geometry(...), winfo_width() reliably returns the *previous*
     width until Tk processes the pending configure request (empirically
     confirmed: ~399/400 mismatches in a tight resize loop without
-    update_idletasks(), see docs/issues-v3.md #5). The fix has
+    update_idletasks()). The fix has
     WindowController hand the freshly computed width to the resize
     callback directly instead of the callback re-reading root."""
     received = []
@@ -325,7 +325,7 @@ def test_resize_callback_receives_width_without_stale_reread(root):
         ctrl._proxy.destroy()
 
 
-# ── Scroll affordance (issues-v4 #2) ─────────
+# ── Scroll affordance ────────────────────────
 
 
 def test_blend_alpha_hex_flattens_alpha_onto_background():
@@ -344,8 +344,8 @@ def test_blend_alpha_hex_passes_through_opaque_colors():
 
 def test_scrollbar_activates_when_content_exceeds_visible_height(root):
     """With enough tasks to overflow a short window, the scrollbar must
-    become visible (packed) — regression coverage for the '+11 tasks,
-    scrollbar barely perceptible' finding in issues-v4 #2."""
+    become visible (packed): with 11+ tasks the scrollbar used to be
+    barely perceptible."""
     win = tk.Toplevel(root)
     try:
         win.geometry("320x150+0+0")
@@ -399,7 +399,7 @@ def test_scrollbar_stays_hidden_when_content_fits(root):
 def test_scroll_increment_matches_task_row_height_to_prevent_split_rows(root):
     """yscrollincrement must equal a whole task row's footprint, so Tk's
     canvas can never leave a row rendered half-visible at the viewport
-    edge (see issues-v4 #2: last row cut in half with no affordance)."""
+    edge (the last row used to be cut in half with no affordance)."""
     win = tk.Toplevel(root)
     try:
         win.geometry("320x150+0+0")
@@ -424,7 +424,7 @@ def test_scroll_increment_matches_task_row_height_to_prevent_split_rows(root):
         win.destroy()
 
 
-# ── Rounded card + shadow (issues-v4 #3) ─────
+# ── Rounded card + shadow ────────────────────
 
 
 def test_task_item_card_canvas_gets_real_size_and_draws_rounded_shapes(root):
@@ -1277,7 +1277,7 @@ def test_ensure_visible_scrolls_a_row_into_view(root):
         win.destroy()
 
 
-# ── Section header hierarchy (issues-v4 #4) ──
+# ── Section header hierarchy ─────────────────
 
 
 def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_path):
@@ -1417,7 +1417,7 @@ def test_link_color_is_validated_against_the_list_background():
     assert ("link_color", "content_bg", 4.5) in _CONTRAST_PAIRS
 
 
-# ── Window icon (issues-v4 #5) ───────────────
+# ── Window icon ──────────────────────────────
 
 
 def test_icon_path_resolves_to_an_existing_bundled_asset():
