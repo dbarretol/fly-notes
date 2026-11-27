@@ -1,0 +1,66 @@
+name: Release
+
+# Pushing a vX.Y.Z tag on main publishes a GitHub Release with FlyNotes.exe,
+# its SHA-256 checksum and the matching CHANGELOG.md section as notes.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # to check that the tag is on main
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Check the tag
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
+          # Fails early if the tag doesn't match pyproject.toml or the changelog has
+          # no section for it (the checksum is a placeholder here).
+          uv run python scripts/release_notes.py "$GITHUB_REF_NAME" "$(printf '0%.0s' {1..64})" > /dev/null
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build
+        run: uv run pyinstaller FlyNotes.spec --clean --noconfirm
+
+      - name: Checksum and notes
+        run: |
+          cd dist
+          sha256sum FlyNotes.exe > FlyNotes.exe.sha256
+          hash=$(cut -d ' ' -f 1 FlyNotes.exe.sha256)
+          cd ..
+          uv run python scripts/release_notes.py "$GITHUB_REF_NAME" "$hash" > release-notes.md
+          echo "SHA-256: \`$hash\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/FlyNotes.exe dist/FlyNotes.exe.sha256 \
+            --verify-tag \
+            --title "Fly Notes ${GITHUB_REF_NAME#v}" \
+            --notes-file release-notes.md
