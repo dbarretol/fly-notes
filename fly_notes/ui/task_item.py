@@ -21,7 +21,7 @@ from .drawing import blend_alpha_hex, draw_rounded_rect
 _MIN_WRAP_WIDTH = 60
 
 
-class _BoolValue:
+class BoolValue:
     """``get()``/``set()`` holder with the same interface as ``tk.BooleanVar``.
 
     No widget is bound to the completed flag, so a Tcl variable isn't needed,
@@ -88,7 +88,7 @@ class TaskItem(tk.Frame):
         self._on_move = on_move
 
         # State
-        self.completed_var = _BoolValue(completed)
+        self.completed_var = BoolValue(completed)
         self._is_hovered = False
         self._is_dragging = False
         self._drag_active = False

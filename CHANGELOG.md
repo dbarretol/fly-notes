@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Show N more" link are created once and reused, and only rows that are new or out of
   place are packed again. With 100 tasks a swap while dragging takes about 1 ms instead of
   90 ms, and ticking a task about 30 ms instead of 140 ms. ([#25])
+- Rows past `max_visible_tasks` are built only when "Show N more" reveals them. Before,
+  every task got a full row at startup even if it was never shown. With 1,000 tasks the
+  window opens in about 0.46 s instead of 1.1 s. ([#26])
 
 ### Fixed
 
@@ -172,3 +175,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#22]: https://github.com/dbarretol/fly-notes/issues/22
 [#23]: https://github.com/dbarretol/fly-notes/issues/23
 [#25]: https://github.com/dbarretol/fly-notes/issues/25
+[#26]: https://github.com/dbarretol/fly-notes/issues/26

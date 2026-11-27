@@ -33,7 +33,7 @@ from .entry import TaskEntryBar
 from .footer import FooterBar
 from .header import HeaderBar
 from .task_item import TaskItem
-from .task_list import TaskListView
+from .task_list import Row, TaskListView
 
 logger = logging.getLogger(__name__)
 
@@ -279,11 +279,20 @@ class FlyNotesApp:
 
     def _add_new_task(self, text: str) -> None:
         task = self.manager.add_task(text)
-        self._create_task_widget(task)
+        self._add_task_row(task)
         self._refresh_ui()
 
-    def _create_task_widget(self, task: Task, index: int | None = None) -> TaskItem:
-        widget = TaskItem(
+    def _add_task_row(self, task: Task, index: int | None = None) -> None:
+        """Add *task* to the list; its row is built when it is first shown."""
+        self._task_list.add_lazy(
+            task.id, task.completed, lambda: self._build_task_widget(task.id), index=index
+        )
+
+    def _build_task_widget(self, task_id: str) -> TaskItem:
+        # Read the task when the row is built: its text may have changed since it was added.
+        task = self.manager.task_by_id(task_id)
+        assert task is not None, task_id
+        return TaskItem(
             self._task_list.inner_frame,
             self._cfg,
             task_id=task.id,
@@ -298,8 +307,6 @@ class FlyNotesApp:
             on_navigate=self._navigate_from,
             on_move=self._move_task,
         )
-        self._task_list.add_widget(widget, index=index)
-        return widget
 
     def _delete_task(self, item: TaskItem) -> None:
         if self._cfg.settings.confirm_delete:
@@ -370,7 +377,7 @@ class FlyNotesApp:
         if self._reorder(item, target):
             self._focus_task(item)
 
-    def _reorder(self, item: TaskItem, target: TaskItem) -> bool:
+    def _reorder(self, item: TaskItem, target: Row) -> bool:
         """Move *item* to *target*'s place in the model and re-sync the widgets."""
         try:
             model_idx = self.manager.index_of(item.task_id)
@@ -406,12 +413,12 @@ class FlyNotesApp:
 
     def _clear_completed(self) -> None:
         # No confirmation dialog: the clear can be undone from the footer or Ctrl+Z.
+        done = [t.id for t in self.manager.tasks if t.completed]
         count = self.manager.clear_completed()
         if count == 0:
             return
-        to_remove = [w for w in self._task_list.task_widgets if w.completed_var.get()]
-        for w in to_remove:
-            self._task_list.remove_widget(w)
+        for task_id in done:
+            self._task_list.remove_task(task_id)
         self._refresh_ui()
         self._footer.show_undo(self._cfg.string("undo_cleared", count=count))
 
@@ -422,7 +429,7 @@ class FlyNotesApp:
         if not restored:
             return
         for task in restored:
-            self._create_task_widget(task, index=self.manager.index_of(task.id))
+            self._add_task_row(task, index=self.manager.index_of(task.id))
         self._refresh_ui()
 
     # ── Drag-and-drop (model-safe) ───────────
@@ -466,7 +473,7 @@ class FlyNotesApp:
 
     def _load_initial_tasks(self) -> None:
         for task in self.manager.tasks:
-            self._create_task_widget(task)
+            self._add_task_row(task)
         self._refresh_ui()
 
     def _refresh_ui(self) -> None:

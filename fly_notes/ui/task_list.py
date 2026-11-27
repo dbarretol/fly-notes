@@ -3,14 +3,33 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from typing import Any
 
 from ..config import AppConfig
 from .drawing import blend_alpha_hex
-from .task_item import TaskItem
+from .task_item import BoolValue, TaskItem
 
 # Options of one ``pack()`` call.
 PackOptions = dict[str, Any]
+
+
+class LazyRow:
+    """A task whose row has not been built yet: just enough to sort and count it.
+
+    ``create`` builds the real ``TaskItem`` the first time the row is shown.
+    """
+
+    __slots__ = ("completed_var", "create", "task_id")
+
+    def __init__(self, task_id: str, completed: bool, create: Callable[[], TaskItem]) -> None:
+        self.task_id = task_id
+        self.completed_var = BoolValue(completed)
+        self.create = create
+
+
+# One entry of the list: a built row or one still waiting to be shown.
+Row = TaskItem | LazyRow
 
 
 class TaskListView(tk.Frame):
@@ -26,7 +45,8 @@ class TaskListView(tk.Frame):
             **kwargs,
         )
         self._scrollbar_visible = False
-        self._task_widgets: list[TaskItem] = []
+        # Every task, in the model's order. Rows past the visible cap stay LazyRow.
+        self._rows: list[Row] = []
         # Rows revealed past max_visible_tasks with "Show N more" (whole pages).
         self._extra_visible = 0
 
@@ -131,21 +151,26 @@ class TaskListView(tk.Frame):
 
     @property
     def task_widgets(self) -> list[TaskItem]:
-        """Return a copy of the insertion-order widget list."""
-        return list(self._task_widgets)
+        """The rows built so far, in insertion order (rows never shown are not built)."""
+        return [r for r in self._rows if isinstance(r, TaskItem)]
 
-    def visual_order(self) -> list[TaskItem]:
-        """Return widgets in the order they are actually rendered.
+    @property
+    def row_count(self) -> int:
+        """How many tasks the list holds, built or not."""
+        return len(self._rows)
+
+    def visual_order(self) -> list[Row]:
+        """Return rows in the order they are rendered (hidden ones included, last).
 
         Mirrors ``_layout``: when grouping is
         enabled, pending widgets come first, then completed ones; each
         group otherwise keeps insertion order.
         """
         if self._cfg.settings.group_completed:
-            pending = [w for w in self._task_widgets if not w.completed_var.get()]
-            completed = [w for w in self._task_widgets if w.completed_var.get()]
+            pending = [r for r in self._rows if not r.completed_var.get()]
+            completed = [r for r in self._rows if r.completed_var.get()]
             return pending + completed
-        return list(self._task_widgets)
+        return list(self._rows)
 
     def sync_order(self, task_ids: list[str]) -> None:
         """Reorder the insertion-order list to match the model's *task_ids*.
@@ -155,11 +180,11 @@ class TaskListView(tk.Frame):
         two widgets would leave the widget order out of step with the model.
         """
         position = {task_id: i for i, task_id in enumerate(task_ids)}
-        self._task_widgets.sort(key=lambda w: position.get(w.task_id, len(position)))
+        self._rows.sort(key=lambda r: position.get(r.task_id, len(position)))
 
     def packed_order(self) -> list[TaskItem]:
         """Widgets currently rendered (not hidden by the cap), top to bottom."""
-        return [w for w in self.visual_order() if w.winfo_manager()]
+        return [r for r in self.visual_order() if isinstance(r, TaskItem) and r.winfo_manager()]
 
     def ensure_visible(self, widget: TaskItem) -> None:
         """Scroll just enough for *widget* to be fully inside the viewport."""
@@ -189,16 +214,42 @@ class TaskListView(tk.Frame):
         The insertion order mirrors the TaskManager's list, so a restored task
         is inserted at its model index.
         """
-        if index is None:
-            self._task_widgets.append(widget)
-        else:
-            self._task_widgets.insert(index, widget)
+        self._insert_row(widget, index)
         widget.bind_scroll(self._on_mousewheel)
 
+    def add_lazy(
+        self,
+        task_id: str,
+        completed: bool,
+        create: Callable[[], TaskItem],
+        index: int | None = None,
+    ) -> None:
+        """Add a task whose row is built by *create* only when it is first shown.
+
+        Rows past ``max_visible_tasks`` are never built until "Show N more"
+        reveals them, so a long list starts without creating every row.
+        """
+        self._insert_row(LazyRow(task_id, completed, create), index)
+
+    def _insert_row(self, row: Row, index: int | None) -> None:
+        if index is None:
+            self._rows.append(row)
+        else:
+            self._rows.insert(index, row)
+
     def remove_widget(self, widget: TaskItem) -> None:
-        if widget in self._task_widgets:
-            self._task_widgets.remove(widget)
+        if widget in self._rows:
+            self._rows.remove(widget)
         widget.destroy()
+
+    def remove_task(self, task_id: str) -> None:
+        """Remove a task's row, built or not."""
+        for row in self._rows:
+            if row.task_id == task_id:
+                self._rows.remove(row)
+                if isinstance(row, TaskItem):
+                    row.destroy()
+                return
 
     def repack(self) -> None:
         """Bring the rendered rows in line with the task order, grouping and cap.
@@ -260,39 +311,48 @@ class TaskListView(tk.Frame):
         return link
 
     def _visible_widgets(self) -> tuple[list[TaskItem], int]:
-        """Cap the rendered widgets at ``self._cfg.settings.max_visible_tasks``.
+        """Cap the rendered rows at ``self._cfg.settings.max_visible_tasks``.
 
         Applied to the *visual* (post-grouping) order, as one combined
         cap across both groups, plus any pages revealed with "Show N
-        more". Returns the widgets to render and how many were left out.
+        more". Builds the rows that are shown for the first time. Returns
+        the widgets to render and how many rows were left out.
         """
         visual = self.visual_order()
         limit = self._cfg.settings.max_visible_tasks + self._extra_visible
-        if len(visual) <= limit:
-            return visual, 0
-        return visual[:limit], len(visual) - limit
+        return [self._built(r) for r in visual[:limit]], max(0, len(visual) - limit)
+
+    def _built(self, row: Row) -> TaskItem:
+        """The TaskItem for *row*, building it in place if it is still lazy."""
+        if isinstance(row, TaskItem):
+            return row
+        widget = row.create()
+        widget.completed_var.set(row.completed_var.get())
+        widget.bind_scroll(self._on_mousewheel)
+        self._rows[self._rows.index(row)] = widget
+        return widget
 
     def _layout(self) -> list[tk.Widget]:
         """The widgets that should be packed in the inner frame, top to bottom.
 
         Also updates the texts of the section headers and the "Show N more" link.
         """
-        if not self._task_widgets:
+        if not self._rows:
             return [self._empty_label]
 
         visible, hidden_count = self._visible_widgets()
-        visible_set = set(visible)
+        visible_set: set[Row] = set(visible)
         layout: list[tk.Widget] = []
         if self._cfg.settings.group_completed:
-            pending = [w for w in self._task_widgets if not w.completed_var.get()]
-            completed = [w for w in self._task_widgets if w.completed_var.get()]
+            pending = [r for r in self._rows if not r.completed_var.get()]
+            completed = [r for r in self._rows if r.completed_var.get()]
             if pending:
                 self._set_text(
                     self._pending_header,
                     self._cfg.string("section_pending", count=len(pending)).upper(),
                 )
                 layout.append(self._pending_header)
-                layout += [w for w in pending if w in visible_set]
+                layout += [r for r in pending if isinstance(r, TaskItem) and r in visible_set]
             if completed:
                 if pending:
                     layout.append(self._separator)
@@ -301,9 +361,9 @@ class TaskListView(tk.Frame):
                     self._cfg.string("section_completed", count=len(completed)).upper(),
                 )
                 layout.append(self._completed_header)
-                layout += [w for w in completed if w in visible_set]
+                layout += [r for r in completed if isinstance(r, TaskItem) and r in visible_set]
         else:
-            layout += [w for w in self._task_widgets if w in visible_set]
+            layout += visible
 
         if hidden_count:
             self._set_text(self._more_link, self._show_more_text(hidden_count))
@@ -376,10 +436,11 @@ class TaskListView(tk.Frame):
         *shortest* row: a wheel notch never jumps past more than one row,
         and lists of single-line tasks still scroll by exactly one row.
         """
-        if not self._task_widgets:
+        built = self.task_widgets
+        if not built:
             self._canvas.config(yscrollincrement=1)
             return
-        row_height = min(w.winfo_reqheight() for w in self._task_widgets) + 2 * self._cfg.spacing.xs
+        row_height = min(w.winfo_reqheight() for w in built) + 2 * self._cfg.spacing.xs
         self._canvas.config(yscrollincrement=max(1, row_height))
 
     def _scrollbar_set(self, first: float | str, last: float | str) -> None:
