@@ -27,42 +27,50 @@ DEFAULT_TASKS_FILE = APP_PATHS.tasks_file
 ICON_PATH = APP_PATHS.icon_file
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    # Sticky-note look: one pale-yellow surface, flat task rows (no card border or
+    # shadow), an amber accent for focus and links, and a green check mark.
     "colors": {
         # Surfaces
-        "header_bg": "#B35C00",
-        "content_bg": "#FFF4E6",
-        "item_bg": "#FFFFFF",
-        "item_bg_completed": "#E8E0D8",
-        "footer_bg": "#F0E6D8",
-        "separator_color": "#E0D0C0",
+        "header_bg": "#FCEE9E",
+        "content_bg": "#FFF8C5",
+        "item_bg": "#FFF8C5",
+        "item_bg_completed": "#FFF8C5",
+        "footer_bg": "#FFF8C5",
+        "separator_color": "#F0E39C",
+        "window_border": "#E6D36E",
         # Text
-        "text_primary": "#2D1810",
-        "text_secondary": "#5C4033",
-        "text_completed": "#6B5B4E",
-        "text_on_header": "#FFFFFF",
-        "text_placeholder": "#8C7E72",
-        "section_header": "#8B4500",
+        "text_primary": "#3B3200",
+        "text_secondary": "#5E5214",
+        "text_completed": "#6E6224",
+        "text_on_header": "#3B3200",
+        "text_placeholder": "#8A7D3A",
+        "section_header": "#6B5E1C",
+        "header_icon": "#5E5214",
         # Interactive
-        "border_color": "#D4B896",
-        "border_focus": "#B35C00",
-        "btn_danger_bg": "#DC3545",
-        "btn_danger_hover": "#C82333",
-        "btn_close_hover_bg": "#FF4500",
-        "btn_header_hover_bg": "#8B4500",
-        "link_color": "#8B4D00",
-        "link_hover": "#B35C00",
+        "border_color": "#EEDF94",
+        "border_focus": "#A16207",
+        # Same as item_bg: rows without a card border. Set a colour to draw one.
+        "item_border": "#FFF8C5",
+        "entry_bg": "#FFFCE6",
+        "entry_border": "#EEDF94",
+        "btn_danger_bg": "#D92D20",
+        "btn_danger_hover": "#B42318",
+        "btn_close_hover_bg": "#D92D20",
+        "btn_header_hover_bg": "#F5E27E",
+        "link_color": "#8A5206",
+        "link_hover": "#6B3F04",
         # Feedback
-        "drag_highlight": "#FFE0B2",
-        "drag_border": "#B35C00",
-        "checkbox_check": "#B35C00",
-        "checkbox_bg": "#FFFFFF",
-        "checkbox_border": "#B0977A",
-        "checkbox_hover_bg": "#FFF0E0",
-        "scrollbar_thumb": "#A8763F",
-        "scrollbar_track": "#FFF4E6",
+        "drag_highlight": "#FFF1A6",
+        "drag_border": "#A16207",
+        "checkbox_check": "#3E8E4F",
+        "checkbox_bg": "#FFFCE6",
+        "checkbox_border": "#B3A055",
+        "checkbox_hover_bg": "#E4F2D2",
+        "scrollbar_thumb": "#E5D27C",
+        "scrollbar_track": "#FFF8C5",
         # State
-        "shadow_color": "#00000015",
-        "empty_state_fg": "#887868",
+        "shadow_color": "#00000000",
+        "empty_state_fg": "#857832",
     },
     "transparency": {
         "active": 1.0,
@@ -84,11 +92,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "min_width": 240,
         "min_height": 180,
         "max_task_length": 300,
-        "item_padding_y": 7,
+        "item_padding_y": 5,
         "item_padding_x": 10,
         "header_height": 38,
         "footer_height": 32,
-        "border_radius": 6,
+        "border_radius": 3,
         "confirm_delete": False,
         "undo_timeout_ms": 5000,
         # Starting value only: the header pin (or Ctrl+T) choice is remembered in state.json.
@@ -97,6 +105,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "inactive_fade_delay_ms": 800,
         "max_visible_tasks": 100,
         "checkbox_size": 18,
+        "checkbox_round": True,
         "group_completed": True,
         "separator_height": 1,
         "scrollbar_width": 8,
@@ -104,14 +113,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         # in config.json are applied on top of the preset.
         "theme": "light",
     },
+    # Segoe UI Variable ships with Windows 11; FONT_FALLBACKS maps it to Segoe UI elsewhere.
     "fonts": {
-        "header": ["Segoe UI", 10, "bold"],
-        "body": ["Segoe UI", 11],
-        "body_strike": ["Segoe UI", 11, "overstrike"],
-        "footer": ["Segoe UI", 9],
-        "empty_hint": ["Segoe UI", 10, "italic"],
-        "badge": ["Segoe UI", 8, "bold"],
-        "section": ["Segoe UI", 9, "bold"],
+        "header": ["Segoe UI Variable Text Semibold", 10],
+        "body": ["Segoe UI Variable Text", 11],
+        "body_strike": ["Segoe UI Variable Text", 11, "overstrike"],
+        "footer": ["Segoe UI Variable Text", 9],
+        "empty_hint": ["Segoe UI Variable Text", 10, "italic"],
+        "badge": ["Segoe UI Variable Text", 9],
+        "section": ["Segoe UI Variable Text Semibold", 9],
     },
     "shortcuts": {
         "new_task": "<Control-n>",
@@ -148,43 +158,54 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
-# The "dark" preset: replaces every colour token, keeping the same accent hue.
+# The "dark" preset: the same flat layout on a warm charcoal surface.
 DARK_COLORS: dict[str, str] = {
     # Surfaces
-    "header_bg": "#8B4500",
-    "content_bg": "#1F1A17",
-    "item_bg": "#2B2420",
-    "item_bg_completed": "#24201D",
-    "footer_bg": "#26201C",
-    "separator_color": "#3A302A",
+    "header_bg": "#2A2720",
+    "content_bg": "#22201A",
+    "item_bg": "#22201A",
+    "item_bg_completed": "#22201A",
+    "footer_bg": "#22201A",
+    "separator_color": "#36322A",
+    "window_border": "#4A4535",
     # Text
-    "text_primary": "#F2E8DF",
-    "text_secondary": "#C9B8A8",
-    "text_completed": "#A89888",
-    "text_on_header": "#FFFFFF",
-    "text_placeholder": "#8C7E72",
-    "section_header": "#F0A050",
+    "text_primary": "#F2EBD3",
+    "text_secondary": "#C2B89A",
+    "text_completed": "#A39A80",
+    "text_on_header": "#F2EBD3",
+    "text_placeholder": "#8F876F",
+    "section_header": "#B5AB8C",
+    "header_icon": "#C2B89A",
     # Interactive
-    "border_color": "#4A3D33",
-    "border_focus": "#F08A24",
+    "border_color": "#3D392D",
+    "border_focus": "#E0B341",
+    "item_border": "#22201A",
+    "entry_bg": "#2B2820",
+    "entry_border": "#3D392D",
     "btn_danger_bg": "#C82333",
     "btn_danger_hover": "#A71D2A",
     "btn_close_hover_bg": "#C82333",
-    "btn_header_hover_bg": "#6B3500",
-    "link_color": "#F0A050",
-    "link_hover": "#FFC07A",
+    "btn_header_hover_bg": "#3A362B",
+    "link_color": "#E6BE55",
+    "link_hover": "#F2D27A",
     # Feedback
-    "drag_highlight": "#4A3220",
-    "drag_border": "#F08A24",
-    "checkbox_check": "#B35C00",
-    "checkbox_bg": "#2B2420",
-    "checkbox_border": "#8C7A6A",
-    "checkbox_hover_bg": "#3A2E26",
-    "scrollbar_thumb": "#7A5A3A",
-    "scrollbar_track": "#1F1A17",
+    "drag_highlight": "#2F2B22",
+    "drag_border": "#E0B341",
+    "checkbox_check": "#4FA562",
+    "checkbox_bg": "#2B2820",
+    "checkbox_border": "#8A8168",
+    "checkbox_hover_bg": "#2C3A29",
+    "scrollbar_thumb": "#4A4535",
+    "scrollbar_track": "#22201A",
     # State
-    "shadow_color": "#00000060",
-    "empty_state_fg": "#9A8B7E",
+    "shadow_color": "#00000000",
+    "empty_state_fg": "#958C72",
+}
+
+# Font family -> (family, extra styles) to use when it is not installed.
+FONT_FALLBACKS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "Segoe UI Variable Text": ("Segoe UI", ()),
+    "Segoe UI Variable Text Semibold": ("Segoe UI", ("bold",)),
 }
 
 THEMES: dict[str, dict[str, str]] = {
@@ -339,7 +360,7 @@ _NON_NEGATIVE_INT_SETTINGS = (
     "separator_height",
     "inactive_fade_delay_ms",
 )
-_BOOL_SETTINGS = ("confirm_delete", "group_completed", "always_on_top")
+_BOOL_SETTINGS = ("confirm_delete", "group_completed", "always_on_top", "checkbox_round")
 
 
 def _validate_settings(settings: dict[str, Any]) -> None:
@@ -436,6 +457,11 @@ class Colors:
     section_header: str
     border_color: str
     border_focus: str
+    item_border: str
+    entry_bg: str
+    entry_border: str
+    window_border: str
+    header_icon: str
     btn_danger_bg: str
     btn_danger_hover: str
     btn_close_hover_bg: str
@@ -497,6 +523,7 @@ class Settings:
     max_visible_tasks: int
     checkbox_size: int
     group_completed: bool
+    checkbox_round: bool
     separator_height: int
     scrollbar_width: int
     theme: str
@@ -581,6 +608,20 @@ class AppConfig:
             shortcuts=Shortcuts(**data["shortcuts"]),
             strings=Strings(**data["strings"]),
         )
+
+    def with_available_fonts(self, families: set[str]) -> AppConfig:
+        """Swap each font family that is not in *families* for its ``FONT_FALLBACKS`` entry."""
+        swapped: dict[str, Font] = {}
+        for name, (family, size, *styles) in (
+            (f, getattr(self.fonts, f)) for f in Fonts.__dataclass_fields__
+        ):
+            if family in families or family not in FONT_FALLBACKS:
+                continue
+            fallback, extra = FONT_FALLBACKS[family]
+            swapped[name] = (fallback, size, *extra, *styles)
+        if not swapped:
+            return self
+        return replace(self, fonts=replace(self.fonts, **swapped))
 
     def string(self, key: str, **kwargs: Any) -> str:
         """The UI text *key*, formatted with *kwargs*.

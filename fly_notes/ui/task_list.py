@@ -402,10 +402,8 @@ class TaskListView(tk.Frame):
             label.config(text=text)
 
     def _make_section_label(self) -> tk.Label:
-        # Uppercase is the "letter-spacing" simulation Tk can't do natively
-        # (no real tracking support) — combined with the bold, larger
-        # font_section and the dedicated section_header colour, it gives
-        # section separators more visual weight than the 11pt body text.
+        # Small uppercase semibold text in the muted section_header colour: it
+        # labels the group without competing with the task text or the header.
         return tk.Label(
             self._inner,
             fg=self._cfg.colors.section_header,

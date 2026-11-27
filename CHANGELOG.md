@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- New default look, like a sticky note: a pale-yellow window with flat task rows (no card
+  border or shadow), the header blended into the window with muted icons, a thin window
+  border, muted section titles, round checkboxes with a green check mark, and Segoe UI
+  Variable where it is installed. Completed tasks are only dimmed and struck through. The
+  dark theme follows the same layout. Card borders can be turned back on with `item_border`
+  in `config.json`. ([#77])
+
 ## [1.0.0] - 2026-11-27
 
 First stable release. It adds an optional dark theme, and releases are now built and published
@@ -221,3 +230,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#32]: https://github.com/dbarretol/fly-notes/issues/32
 [#65]: https://github.com/dbarretol/fly-notes/issues/65
 [#66]: https://github.com/dbarretol/fly-notes/issues/66
+[#77]: https://github.com/dbarretol/fly-notes/issues/77

@@ -232,6 +232,8 @@ def test_bool_and_path_settings_reject_null():
     with pytest.raises(ValueError):
         _validate_settings({"group_completed": None})
     with pytest.raises(ValueError):
+        _validate_settings({"checkbox_round": None})
+    with pytest.raises(ValueError):
         _validate_settings({"tasks_file": None})
 
 
@@ -373,3 +375,27 @@ def test_an_unknown_theme_falls_back_to_the_defaults(tmp_path, caplog, theme):
     assert cfg.settings.theme == "light"
     assert cfg.settings.min_width == DEFAULT_CONFIG["settings"]["min_width"]
     assert "settings.theme" in caplog.text
+
+
+# ── Font fallback (#77) ──────────────────────
+
+
+def test_missing_variable_fonts_fall_back_to_segoe_ui(cfg):
+    fonts = cfg.with_available_fonts({"Segoe UI"}).fonts
+    assert fonts.body == ("Segoe UI", 11)
+    assert fonts.body_strike == ("Segoe UI", 11, "overstrike")
+    # The semibold family becomes Segoe UI bold.
+    assert fonts.header == ("Segoe UI", 10, "bold")
+    assert fonts.section == ("Segoe UI", 9, "bold")
+
+
+def test_installed_fonts_are_kept(cfg):
+    installed = {"Segoe UI Variable Text", "Segoe UI Variable Text Semibold"}
+    assert cfg.with_available_fonts(installed) is cfg
+
+
+def test_fonts_without_a_fallback_are_kept(cfg):
+    custom = dataclasses.replace(
+        cfg, fonts=dataclasses.replace(cfg.fonts, body=("Comic Sans MS", 12))
+    )
+    assert custom.with_available_fonts(set()).fonts.body == ("Comic Sans MS", 12)

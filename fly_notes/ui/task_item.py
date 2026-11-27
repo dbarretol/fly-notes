@@ -146,6 +146,7 @@ class TaskItem(tk.Frame):
             border_color=self._cfg.colors.checkbox_border,
             hover_color=self._cfg.colors.checkbox_hover_bg,
             box_color=self._cfg.colors.checkbox_bg,
+            round_box=self._cfg.settings.checkbox_round,
         )
         self._check.pack(side="left", padx=(0, self._cfg.spacing.md))
 
@@ -298,13 +299,13 @@ class TaskItem(tk.Frame):
         self._is_dragging = False
         editor = tk.Entry(
             self._content,
-            bg=self._cfg.colors.item_bg,
+            bg=self._cfg.colors.entry_bg,
             fg=self._cfg.colors.text_primary,
             insertbackground=self._cfg.colors.text_primary,
             font=self._cfg.fonts.body,
             bd=0,
             highlightthickness=1,
-            highlightbackground=self._cfg.colors.border_color,
+            highlightbackground=self._cfg.colors.entry_border,
             highlightcolor=self._cfg.colors.border_focus,
         )
         editor.insert(0, self.task_text)
@@ -567,6 +568,15 @@ class TaskItem(tk.Frame):
         self._card_canvas.config(height=height)
         return True
 
+    def _resting_outline(self) -> str:
+        """The card border, or the row's own fill when ``item_border`` matches ``item_bg``.
+
+        A border the same colour as the card means "flat rows": following the
+        fill keeps the row borderless while hover and drag change its colour.
+        """
+        colors = self._cfg.colors
+        return self._card_fill if colors.item_border == colors.item_bg else colors.item_border
+
     def _redraw_card(self, width: int | None = None, height: int | None = None) -> None:
         w = width if width is not None else self._card_canvas.winfo_width()
         h = height if height is not None else self._card_canvas.winfo_height()
@@ -578,7 +588,7 @@ class TaskItem(tk.Frame):
         elif self._has_focus:
             outline, outline_width = self._cfg.colors.border_focus, 2
         else:
-            outline, outline_width = self._cfg.colors.border_color, 1
+            outline, outline_width = self._resting_outline(), 1
 
         # Hover, focus, drag and status changes keep the size: recolour the
         # existing items instead of deleting and recreating all fourteen.
