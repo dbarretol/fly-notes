@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-26
+
+Usability release: undo, editing in place, full keyboard control, a remembered window and an
+optional always-on-top. Your `tasks.json` is unchanged and needs no migration; the window's
+size, position and always-on-top choice go in a new `state.json` next to it.
+
 ### Added
 
 - Undo for deleted tasks: a "Task deleted · Undo" notice appears in the footer for a few
@@ -39,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to 0.75, and the fade starts only after focus has been away for
   `settings.inactive_fade_delay_ms` (800 ms), so a quick click elsewhere doesn't make it
   flicker. ([#14])
+- The README was reorganized for new visitors, with a screenshot, a usage table and diagrams
+  of how data is stored and recovered. ([#16])
 
 ### Fixed
 
@@ -89,7 +97,8 @@ the packaged `FlyNotes.exe`.
 Initial version: floating, always-on-top task widget with drag-to-reorder, grouping of
 completed tasks, configurable theme and taskbar-friendly minimize/restore.
 
-[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/dbarretol/fly-notes/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dbarretol/fly-notes/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/dbarretol/fly-notes/releases/tag/v0.1.1
 [#1]: https://github.com/dbarretol/fly-notes/issues/1
 [#2]: https://github.com/dbarretol/fly-notes/issues/2
@@ -106,3 +115,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#13]: https://github.com/dbarretol/fly-notes/issues/13
 [#14]: https://github.com/dbarretol/fly-notes/issues/14
 [#15]: https://github.com/dbarretol/fly-notes/issues/15
+[#16]: https://github.com/dbarretol/fly-notes/issues/16
