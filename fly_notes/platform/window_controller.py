@@ -31,7 +31,7 @@ import sys
 import tkinter as tk
 from collections.abc import Callable
 
-from ..config import ICON_PATH, config
+from ..config import ICON_PATH, AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +129,11 @@ class WindowController:
     def __init__(
         self,
         root: tk.Tk,
+        cfg: AppConfig,
         on_resize_callback: Callable[[int], None] | None = None,
         on_close: Callable[[], None] | None = None,
     ) -> None:
+        self._cfg = cfg
         self._warn_if_unsupported_platform()
         self.root = root
         self.on_resize_callback = on_resize_callback
@@ -250,8 +252,8 @@ class WindowController:
             start_h=self._start_h,
             start_win_x=self._start_win_x,
             start_win_y=self._start_win_y,
-            min_width=config.min_width,
-            min_height=config.min_height,
+            min_width=self._cfg.settings.min_width,
+            min_height=self._cfg.settings.min_height,
         )
 
         self.root.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
@@ -277,7 +279,7 @@ class WindowController:
         removes the window from the taskbar (primarily Windows).
         """
         self._proxy = tk.Toplevel(self.root)
-        self._proxy.title(config.string("app_title"))
+        self._proxy.title(self._cfg.string("app_title"))
         self._proxy.geometry("1x1+-32000+-32000")
         self._proxy.resizable(False, False)
         self._proxy.protocol("WM_DELETE_WINDOW", self._on_proxy_close)
