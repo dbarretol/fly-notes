@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 import tkinter as tk
+from typing import NamedTuple
+
+
+class RoundedRect(NamedTuple):
+    """Canvas item ids of one rounded rectangle, grouped by the colours they take."""
+
+    corners: tuple[int, int, int, int]  # arcs: fill + outline
+    body: tuple[int, int]  # centre rectangles: fill only (outline = fill)
+    border: int  # outline only
 
 
 def draw_rounded_rect(
@@ -16,14 +25,15 @@ def draw_rounded_rect(
     outline: str,
     width: float,
     tags: tuple[str, ...] = (),
-) -> None:
+) -> RoundedRect:
     """Draw a rounded rectangle on *canvas* using arcs + fill rects.
 
     Shared by ``CustomCheckbox`` and ``TaskItem``'s card background so the
-    same corner-drawing logic isn't duplicated per widget.
+    same corner-drawing logic isn't duplicated per widget. Returns the item
+    ids, so the colours can be changed later with ``recolor_rounded_rect``.
     """
     d = r * 2
-    canvas.create_arc(
+    a0 = canvas.create_arc(
         x1,
         y1,
         x1 + d,
@@ -36,7 +46,7 @@ def draw_rounded_rect(
         style="pieslice",
         tags=tags,
     )
-    canvas.create_arc(
+    a1 = canvas.create_arc(
         x2 - d,
         y1,
         x2,
@@ -49,7 +59,7 @@ def draw_rounded_rect(
         style="pieslice",
         tags=tags,
     )
-    canvas.create_arc(
+    a2 = canvas.create_arc(
         x1,
         y2 - d,
         x1 + d,
@@ -62,7 +72,7 @@ def draw_rounded_rect(
         style="pieslice",
         tags=tags,
     )
-    canvas.create_arc(
+    a3 = canvas.create_arc(
         x2 - d,
         y2 - d,
         x2,
@@ -76,10 +86,24 @@ def draw_rounded_rect(
         tags=tags,
     )
     # Fill center regions
-    canvas.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill, tags=tags)
-    canvas.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill, tags=tags)
+    b0 = canvas.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill, tags=tags)
+    b1 = canvas.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill, tags=tags)
     # Clean border on top
-    canvas.create_rectangle(x1, y1, x2, y2, fill="", outline=outline, width=width, tags=tags)
+    border = canvas.create_rectangle(
+        x1, y1, x2, y2, fill="", outline=outline, width=width, tags=tags
+    )
+    return RoundedRect((a0, a1, a2, a3), (b0, b1), border)
+
+
+def recolor_rounded_rect(
+    canvas: tk.Canvas, rect: RoundedRect, fill: str, outline: str, width: float
+) -> None:
+    """Change the colours of a rounded rectangle in place, without recreating it."""
+    for item in rect.corners:
+        canvas.itemconfigure(item, fill=fill, outline=outline, width=width)
+    for item in rect.body:
+        canvas.itemconfigure(item, fill=fill, outline=fill)
+    canvas.itemconfigure(rect.border, outline=outline, width=width)
 
 
 def blend_alpha_hex(rgba_hex: str, background_hex: str) -> str:

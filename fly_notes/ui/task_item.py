@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from ..config import AppConfig
 from .checkbox import CustomCheckbox
-from .drawing import blend_alpha_hex, draw_rounded_rect
+from .drawing import RoundedRect, blend_alpha_hex, draw_rounded_rect, recolor_rounded_rect
 
 # Never wrap narrower than this, so a tiny window doesn't stack one word per line.
 _MIN_WRAP_WIDTH = 60
@@ -98,6 +98,13 @@ class TaskItem(tk.Frame):
         )
         self._radius = self._cfg.settings.border_radius
         self._shadow_px = 2
+        # shadow_color has an alpha channel Tk can't draw: flatten it once.
+        self._shadow_fill = blend_alpha_hex(
+            self._cfg.colors.shadow_color, self._cfg.colors.content_bg
+        )
+        # The main card's canvas items and the size they were drawn at.
+        self._card: RoundedRect | None = None
+        self._card_size = (0, 0)
 
         # ── Card background (rounded rect + subtle drop shadow) ──
         # tk.Frame/tk.Label can't draw rounded corners natively, so the
@@ -565,27 +572,6 @@ class TaskItem(tk.Frame):
         h = height if height is not None else self._card_canvas.winfo_height()
         if w <= 1 or h <= 1:
             return
-        self._card_canvas.delete("card")
-        r = self._radius
-        off = self._shadow_px
-
-        # Shadow: a solid rounded rect offset down-right, drawn first so the
-        # main card (drawn on top, inset by `off`) leaves only a thin sliver
-        # visible along the bottom/right edges — a cheap drop-shadow with no
-        # real alpha compositing support in Tk.
-        shadow_fill = blend_alpha_hex(self._cfg.colors.shadow_color, self._cfg.colors.content_bg)
-        draw_rounded_rect(
-            self._card_canvas,
-            off,
-            off,
-            w,
-            h,
-            r,
-            fill=shadow_fill,
-            outline=shadow_fill,
-            width=0,
-            tags=("card",),
-        )
 
         if self._drag_active:
             outline, outline_width = self._cfg.colors.drag_border, 2
@@ -593,7 +579,37 @@ class TaskItem(tk.Frame):
             outline, outline_width = self._cfg.colors.border_focus, 2
         else:
             outline, outline_width = self._cfg.colors.border_color, 1
+
+        # Hover, focus, drag and status changes keep the size: recolour the
+        # existing items instead of deleting and recreating all fourteen.
+        if self._card is not None and self._card_size == (w, h):
+            recolor_rounded_rect(
+                self._card_canvas, self._card, self._card_fill, outline, outline_width
+            )
+            return
+
+        self._card_canvas.delete("card")
+        self._card_size = (w, h)
+        r = self._radius
+        off = self._shadow_px
+
+        # Shadow: a solid rounded rect offset down-right, drawn first so the
+        # main card (drawn on top, inset by `off`) leaves only a thin sliver
+        # visible along the bottom/right edges — a cheap drop-shadow with no
+        # real alpha compositing support in Tk.
         draw_rounded_rect(
+            self._card_canvas,
+            off,
+            off,
+            w,
+            h,
+            r,
+            fill=self._shadow_fill,
+            outline=self._shadow_fill,
+            width=0,
+            tags=("card",),
+        )
+        self._card = draw_rounded_rect(
             self._card_canvas,
             0,
             0,

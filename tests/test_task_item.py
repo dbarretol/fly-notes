@@ -4,6 +4,7 @@ import tkinter as tk
 import types
 from typing import cast
 
+from fly_notes.ui import task_item as task_item_module
 from fly_notes.ui.task_item import TaskItem
 from fly_notes.ui.task_list import TaskListView
 
@@ -439,3 +440,79 @@ def test_pressed_delete_button_uses_btn_danger_hover(root, cfg):
     item = TaskItem(root, cfg, task_id="1", text="Task")
     assert item._delete_btn.cget("activebackground") == cfg.colors.btn_danger_hover
     item.destroy()
+
+
+# ── Cheap card redraws (#27) ──────────────────
+
+
+def _drawn_item(root, cfg):
+    win = tk.Toplevel(root)
+    win.geometry("320x100+0+0")
+    item = TaskItem(win, cfg, task_id="1", text="Sample task")
+    item.pack(fill="x")
+    win.update_idletasks()
+    assert item._card is not None, "the card should be drawn once the row has a size"
+    return win, item
+
+
+def test_hover_and_focus_recolour_the_card_without_recreating_it(root, cfg):
+    win, item = _drawn_item(root, cfg)
+    try:
+        canvas = item._card_canvas
+        items = canvas.find_withtag("card")
+        card = item._card
+        assert card is not None
+
+        item._on_enter()
+        item.set_drag_active(True)
+        item.set_drag_active(False)
+        item._on_leave()
+        item._on_enter()
+
+        assert canvas.find_withtag("card") == items
+        assert canvas.itemcget(card.body[0], "fill") == cfg.colors.drag_highlight
+        assert canvas.itemcget(card.corners[0], "fill") == cfg.colors.drag_highlight
+    finally:
+        win.destroy()
+
+
+def test_focus_ring_is_recoloured_in_place(root, cfg):
+    win, item = _drawn_item(root, cfg)
+    try:
+        card = item._card
+        assert card is not None
+        item._has_focus = True
+        item._redraw_card()
+        assert item._card is card
+        assert item._card_canvas.itemcget(card.border, "outline") == cfg.colors.border_focus
+        assert float(item._card_canvas.itemcget(card.border, "width")) == 2
+    finally:
+        win.destroy()
+
+
+def test_a_new_size_redraws_the_card(root, cfg):
+    win, item = _drawn_item(root, cfg)
+    try:
+        before = item._card
+        w, h = item._card_size
+        item._redraw_card(w + 40, h)
+        after = item._card
+        assert after is not None and after is not before
+        assert item._card_size == (w + 40, h)
+        x1, _, x2, _ = item._card_canvas.coords(after.border)
+        assert x2 - x1 == w + 40 - item._shadow_px
+    finally:
+        win.destroy()
+
+
+def test_shadow_colour_is_flattened_once(root, cfg, monkeypatch):
+    win, item = _drawn_item(root, cfg)
+    try:
+        calls = []
+        monkeypatch.setattr(task_item_module, "blend_alpha_hex", lambda *a: calls.append(a))
+        w, h = item._card_size
+        item._redraw_card(w + 10, h)
+        item._on_enter()
+        assert calls == []
+    finally:
+        win.destroy()
