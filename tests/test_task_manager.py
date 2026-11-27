@@ -129,3 +129,86 @@ def test_load_invalid_task_format(temp_tasks_file):
     # So it should generate a new one.
     assert len(tm.tasks) == 1
     assert isinstance(tm.tasks[0]["id"], str)
+
+
+# ── Corrupt-file safety ──────────────────────
+
+
+def _corrupt_copies(path):
+    return sorted(path.parent.glob(f"{path.stem}.corrupt-*{path.suffix}"))
+
+
+def test_unreadable_file_is_moved_aside_and_not_overwritten(tmp_path):
+    tasks_file = tmp_path / "tasks.json"
+    original = '[{"id": "a", "text": "precious", "completed": false'  # truncated JSON
+    tasks_file.write_text(original, encoding="utf-8")
+    errors = []
+
+    tm = TaskManager(tasks_file=str(tasks_file), error_callback=errors.append)
+    tm.add_task("new")
+    tm.flush()
+
+    copies = _corrupt_copies(tasks_file)
+    assert len(copies) == 1
+    assert copies[0].read_text(encoding="utf-8") == original
+    assert [t["text"] for t in json.loads(tasks_file.read_text(encoding="utf-8"))] == ["new"]
+    assert errors and str(copies[0]) in errors[0]
+
+
+def test_unreadable_file_is_restored_from_backup(tmp_path):
+    tasks_file = tmp_path / "tasks.json"
+    tm = TaskManager(tasks_file=str(tasks_file))
+    tm.add_task("first")
+    tm.flush()
+    tm.add_task("second")
+    tm.flush()  # backup now holds ["first"]
+    tasks_file.write_text("garbage", encoding="utf-8")
+    errors = []
+
+    tm2 = TaskManager(tasks_file=str(tasks_file), error_callback=errors.append)
+
+    assert [t["text"] for t in tm2.tasks] == ["first"]
+    assert [t["text"] for t in json.loads(tasks_file.read_text(encoding="utf-8"))] == ["first"]
+    assert _corrupt_copies(tasks_file)[0].read_text(encoding="utf-8") == "garbage"
+    assert "Restored 1 task(s)" in errors[0]
+
+
+def test_saves_are_blocked_when_unreadable_file_cannot_be_moved(tmp_path, monkeypatch):
+    tasks_file = tmp_path / "tasks.json"
+    tasks_file.write_text("garbage", encoding="utf-8")
+    monkeypatch.setattr(TaskManager, "_preserve_original", lambda self, move: None)
+    errors = []
+
+    tm = TaskManager(tasks_file=str(tasks_file), error_callback=errors.append)
+    tm.add_task("new")
+    tm.flush()
+
+    assert tasks_file.read_text(encoding="utf-8") == "garbage"
+    assert "Saving is disabled" in errors[0]
+
+
+def test_skipped_malformed_entries_keep_a_copy_of_the_original(tmp_path):
+    tasks_file = tmp_path / "tasks.json"
+    original = json.dumps([{"id": "a", "text": "ok", "completed": False}, "not a task"])
+    tasks_file.write_text(original, encoding="utf-8")
+    errors = []
+
+    tm = TaskManager(tasks_file=str(tasks_file), error_callback=errors.append)
+
+    assert [t["text"] for t in tm.tasks] == ["ok"]
+    copies = _corrupt_copies(tasks_file)
+    assert len(copies) == 1 and copies[0].read_text(encoding="utf-8") == original
+    assert "1 malformed task(s)" in errors[0]
+
+
+def test_backup_holds_previous_version(tmp_path):
+    tasks_file = tmp_path / "tasks.json"
+    tm = TaskManager(tasks_file=str(tasks_file))
+    tm.add_task("one")
+    tm.flush()
+    assert not (tmp_path / "tasks.json.bak").exists()  # nothing to back up on first save
+    tm.add_task("two")
+    tm.flush()
+
+    backup = json.loads((tmp_path / "tasks.json.bak").read_text(encoding="utf-8"))
+    assert [t["text"] for t in backup] == ["one"]
