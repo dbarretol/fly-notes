@@ -321,7 +321,7 @@ fly-notes/
 ├── main.py                    # Thin launcher (also the PyInstaller entry script)
 ├── fly_notes/
 │   ├── __main__.py            # Startup: DPI awareness, logging, single-instance check, Tk root
-│   ├── config.py              # Defaults, validation, config.json merging
+│   ├── config.py              # Defaults, validation, config.json merging → typed AppConfig
 │   ├── paths.py               # Where the data folder is
 │   ├── model/                 # No Tkinter
 │   │   ├── task.py            # Task record and its tasks.json format

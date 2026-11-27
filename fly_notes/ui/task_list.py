@@ -5,7 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from typing import Any
 
-from ..config import config
+from ..config import AppConfig
 from .drawing import blend_alpha_hex
 from .task_item import TaskItem
 
@@ -13,10 +13,11 @@ from .task_item import TaskItem
 class TaskListView(tk.Frame):
     """Scrollable canvas hosting TaskItem widgets with optional grouping."""
 
-    def __init__(self, master: tk.Widget, **kwargs: Any) -> None:
+    def __init__(self, master: tk.Widget, cfg: AppConfig, **kwargs: Any) -> None:
+        self._cfg = cfg
         super().__init__(
             master,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             **kwargs,
@@ -32,10 +33,10 @@ class TaskListView(tk.Frame):
         self._scrollbar = tk.Scrollbar(
             self,
             orient="vertical",
-            width=config.scrollbar_width,
-            troughcolor=config.scrollbar_track,
-            bg=config.scrollbar_thumb,
-            activebackground=config.scrollbar_thumb,
+            width=self._cfg.settings.scrollbar_width,
+            troughcolor=self._cfg.colors.scrollbar_track,
+            bg=self._cfg.colors.scrollbar_thumb,
+            activebackground=self._cfg.colors.scrollbar_thumb,
             bd=0,
             highlightthickness=0,
             relief="flat",
@@ -44,7 +45,7 @@ class TaskListView(tk.Frame):
         # Canvas
         self._canvas = tk.Canvas(
             self,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
             yscrollcommand=self._scrollbar_set,
@@ -54,7 +55,7 @@ class TaskListView(tk.Frame):
         # Inner frame
         self._inner = tk.Frame(
             self._canvas,
-            bg=config.content_bg,
+            bg=self._cfg.colors.content_bg,
             highlightthickness=0,
             bd=0,
         )
@@ -64,7 +65,7 @@ class TaskListView(tk.Frame):
             (0, 0),
             window=self._inner,
             anchor="nw",
-            width=config.default_width,
+            width=self._cfg.settings.default_width,
         )
 
         # "More content below" indicator — shown only while scrolled above
@@ -72,7 +73,7 @@ class TaskListView(tk.Frame):
         # directly, so it's flattened onto content_bg once at construction.
         self._bottom_shadow = tk.Frame(
             self,
-            bg=blend_alpha_hex(config.shadow_color, config.content_bg),
+            bg=blend_alpha_hex(self._cfg.colors.shadow_color, self._cfg.colors.content_bg),
             height=3,
             bd=0,
             highlightthickness=0,
@@ -82,11 +83,11 @@ class TaskListView(tk.Frame):
         # Empty state label
         self._empty_label = tk.Label(
             self._inner,
-            text=config.string("empty_state"),
-            fg=config.empty_state_fg,
-            bg=config.content_bg,
-            font=config.font_empty_hint,
-            pady=config.spacing_xxl,
+            text=self._cfg.string("empty_state"),
+            fg=self._cfg.colors.empty_state_fg,
+            bg=self._cfg.colors.content_bg,
+            font=self._cfg.fonts.empty_hint,
+            pady=self._cfg.spacing.xxl,
         )
 
         # Rows change height when their text re-wraps (e.g. on resize), so the
@@ -113,7 +114,7 @@ class TaskListView(tk.Frame):
         enabled, pending widgets come first, then completed ones; each
         group otherwise keeps insertion order.
         """
-        if config.group_completed:
+        if self._cfg.settings.group_completed:
             pending = [w for w in self._task_widgets if not w.completed_var.get()]
             completed = [w for w in self._task_widgets if w.completed_var.get()]
             return pending + completed
@@ -197,7 +198,7 @@ class TaskListView(tk.Frame):
 
         visible, hidden_count = self._visible_widgets()
 
-        if config.group_completed:
+        if self._cfg.settings.group_completed:
             self._pack_grouped(visible)
         else:
             self._pack_flat(visible)
@@ -205,12 +206,14 @@ class TaskListView(tk.Frame):
         if hidden_count:
             self._make_show_more_link(hidden_count).pack(
                 anchor="w",
-                padx=config.spacing_xl,
-                pady=(config.spacing_xs, config.spacing_xs),
+                padx=self._cfg.spacing.xl,
+                pady=(self._cfg.spacing.xs, self._cfg.spacing.xs),
             )
 
         # Bottom spacer
-        spacer = tk.Frame(self._inner, bg=config.content_bg, height=config.spacing_lg, bd=0)
+        spacer = tk.Frame(
+            self._inner, bg=self._cfg.colors.content_bg, height=self._cfg.spacing.lg, bd=0
+        )
         spacer.pack(fill="x")
         self._transient_widgets.append(spacer)
 
@@ -225,7 +228,7 @@ class TaskListView(tk.Frame):
 
     def show_more(self) -> None:
         """Reveal the next page (``max_visible_tasks`` rows) of hidden tasks."""
-        self._extra_visible += config.max_visible_tasks
+        self._extra_visible += self._cfg.settings.max_visible_tasks
         self.repack()
 
     def _make_show_more_link(self, hidden_count: int) -> tk.Label:
@@ -236,43 +239,46 @@ class TaskListView(tk.Frame):
         plain footer-sized link styling rather than the bold uppercase
         header treatment.
         """
-        page = min(hidden_count, config.max_visible_tasks)
+        page = min(hidden_count, self._cfg.settings.max_visible_tasks)
         if page < hidden_count:
-            text = config.string("more_hidden_paged", count=page, hidden=hidden_count)
+            text = self._cfg.string("more_hidden_paged", count=page, hidden=hidden_count)
         else:
-            text = config.string("more_hidden", count=page)
+            text = self._cfg.string("more_hidden", count=page)
         link = tk.Label(
             self._inner,
             text=text,
-            fg=config.link_color,
-            bg=config.content_bg,
-            font=config.font_footer,
+            fg=self._cfg.colors.link_color,
+            bg=self._cfg.colors.content_bg,
+            font=self._cfg.fonts.footer,
             anchor="w",
             cursor="hand2",
             takefocus=True,
             highlightthickness=1,
-            highlightbackground=config.content_bg,
-            highlightcolor=config.border_focus,
+            highlightbackground=self._cfg.colors.content_bg,
+            highlightcolor=self._cfg.colors.border_focus,
         )
-        underline = (*config.font_footer[:2], "underline")
+        underline = (*self._cfg.fonts.footer[:2], "underline")
         link.bind("<Button-1>", lambda _: self.show_more())
         link.bind("<Return>", lambda _: self.show_more())
         link.bind("<space>", lambda _: self.show_more())
-        link.bind("<Enter>", lambda _: link.config(fg=config.link_hover, font=underline))
-        link.bind("<Leave>", lambda _: link.config(fg=config.link_color, font=config.font_footer))
+        link.bind("<Enter>", lambda _: link.config(fg=self._cfg.colors.link_hover, font=underline))
+        link.bind(
+            "<Leave>",
+            lambda _: link.config(fg=self._cfg.colors.link_color, font=self._cfg.fonts.footer),
+        )
         link.bind("<MouseWheel>", self._on_mousewheel)
         self._transient_widgets.append(link)
         return link
 
     def _visible_widgets(self) -> tuple[list[TaskItem], int]:
-        """Cap the rendered widgets at ``config.max_visible_tasks``.
+        """Cap the rendered widgets at ``self._cfg.settings.max_visible_tasks``.
 
         Applied to the *visual* (post-grouping) order, as one combined
         cap across both groups, plus any pages revealed with "Show N
         more". Returns the widgets to render and how many were left out.
         """
         visual = self.visual_order()
-        limit = config.max_visible_tasks + self._extra_visible
+        limit = self._cfg.settings.max_visible_tasks + self._extra_visible
         if len(visual) <= limit:
             return visual, 0
         return visual[:limit], len(visual) - limit
@@ -283,48 +289,50 @@ class TaskListView(tk.Frame):
         completed = [w for w in self._task_widgets if w.completed_var.get()]
 
         if pending:
-            header = self._make_section_label(config.string("section_pending", count=len(pending)))
+            header = self._make_section_label(
+                self._cfg.string("section_pending", count=len(pending))
+            )
             header.pack(
                 fill="x",
-                padx=config.spacing_xl,
-                pady=(config.spacing_md, config.spacing_xs),
+                padx=self._cfg.spacing.xl,
+                pady=(self._cfg.spacing.md, self._cfg.spacing.xs),
             )
         for w in pending:
             if w in visible_set:
-                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+                w.pack(fill="x", pady=self._cfg.spacing.xs, padx=self._cfg.spacing.md)
 
         if completed:
             if pending:
                 sep = tk.Frame(
                     self._inner,
-                    bg=config.separator_color,
-                    height=config.separator_height,
+                    bg=self._cfg.colors.separator_color,
+                    height=self._cfg.settings.separator_height,
                     bd=0,
                 )
                 sep.pack(
                     fill="x",
-                    padx=config.spacing_xl,
-                    pady=(config.spacing_lg, config.spacing_xs),
+                    padx=self._cfg.spacing.xl,
+                    pady=(self._cfg.spacing.lg, self._cfg.spacing.xs),
                 )
                 self._transient_widgets.append(sep)
 
             header = self._make_section_label(
-                config.string("section_completed", count=len(completed))
+                self._cfg.string("section_completed", count=len(completed))
             )
             header.pack(
                 fill="x",
-                padx=config.spacing_xl,
-                pady=(config.spacing_xs, config.spacing_xs),
+                padx=self._cfg.spacing.xl,
+                pady=(self._cfg.spacing.xs, self._cfg.spacing.xs),
             )
             for w in completed:
                 if w in visible_set:
-                    w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+                    w.pack(fill="x", pady=self._cfg.spacing.xs, padx=self._cfg.spacing.md)
 
     def _pack_flat(self, visible: list[TaskItem]) -> None:
         visible_set = set(visible)
         for w in self._task_widgets:
             if w in visible_set:
-                w.pack(fill="x", pady=config.spacing_xs, padx=config.spacing_md)
+                w.pack(fill="x", pady=self._cfg.spacing.xs, padx=self._cfg.spacing.md)
 
     def _make_section_label(self, text: str) -> tk.Label:
         # Uppercase is the "letter-spacing" simulation Tk can't do natively
@@ -334,9 +342,9 @@ class TaskListView(tk.Frame):
         lbl = tk.Label(
             self._inner,
             text=text.upper(),
-            fg=config.section_header,
-            bg=config.content_bg,
-            font=config.font_section,
+            fg=self._cfg.colors.section_header,
+            bg=self._cfg.colors.content_bg,
+            font=self._cfg.fonts.section,
             anchor="w",
         )
         self._transient_widgets.append(lbl)
@@ -344,7 +352,7 @@ class TaskListView(tk.Frame):
 
     def _update_empty_state(self) -> None:
         if not self._task_widgets:
-            self._empty_label.pack(fill="x", padx=config.spacing_xl)
+            self._empty_label.pack(fill="x", padx=self._cfg.spacing.xl)
         else:
             self._empty_label.pack_forget()
 
@@ -373,7 +381,7 @@ class TaskListView(tk.Frame):
         if not self._task_widgets:
             self._canvas.config(yscrollincrement=1)
             return
-        row_height = min(w.winfo_reqheight() for w in self._task_widgets) + 2 * config.spacing_xs
+        row_height = min(w.winfo_reqheight() for w in self._task_widgets) + 2 * self._cfg.spacing.xs
         self._canvas.config(yscrollincrement=max(1, row_height))
 
     def _scrollbar_set(self, first: str, last: str) -> None:

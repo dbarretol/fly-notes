@@ -6,7 +6,7 @@ import tkinter as tk
 from collections.abc import Callable
 from typing import Any
 
-from ..config import config
+from ..config import AppConfig
 
 
 class FooterBar(tk.Frame):
@@ -15,14 +15,16 @@ class FooterBar(tk.Frame):
     def __init__(
         self,
         master: tk.Widget,
+        cfg: AppConfig,
         on_clear: Callable[[], None],
         on_undo: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
+        self._cfg = cfg
         super().__init__(
             master,
-            bg=config.footer_bg,
-            height=config.footer_height,
+            bg=self._cfg.colors.footer_bg,
+            height=self._cfg.settings.footer_height,
             highlightthickness=0,
             bd=0,
             **kwargs,
@@ -35,18 +37,18 @@ class FooterBar(tk.Frame):
         self._badge_label = tk.Label(
             self,
             text="",
-            fg=config.text_secondary,
-            bg=config.footer_bg,
-            font=config.font_badge,
+            fg=self._cfg.colors.text_secondary,
+            bg=self._cfg.colors.footer_bg,
+            font=self._cfg.fonts.badge,
         )
-        self._badge_label.pack(side="left", padx=config.spacing_lg)
+        self._badge_label.pack(side="left", padx=self._cfg.spacing.lg)
 
         self._clear_btn = tk.Label(
             self,
-            text=config.string("clear_completed_zero"),
-            fg=config.link_color,
-            bg=config.footer_bg,
-            font=config.font_footer,
+            text=self._cfg.string("clear_completed_zero"),
+            fg=self._cfg.colors.link_color,
+            bg=self._cfg.colors.footer_bg,
+            font=self._cfg.fonts.footer,
             cursor="hand2",
         )
         self._clear_btn.bind("<Button-1>", lambda _: self._on_clear())
@@ -54,24 +56,24 @@ class FooterBar(tk.Frame):
         self._clear_btn.bind("<Leave>", self._on_leave)
 
         # Undo notice: replaces the badge for a few seconds after a deletion.
-        self._undo_frame = tk.Frame(self, bg=config.footer_bg, bd=0, highlightthickness=0)
+        self._undo_frame = tk.Frame(self, bg=self._cfg.colors.footer_bg, bd=0, highlightthickness=0)
         self._undo_msg = tk.Label(
             self._undo_frame,
             text="",
-            fg=config.text_secondary,
-            bg=config.footer_bg,
-            font=config.font_badge,
+            fg=self._cfg.colors.text_secondary,
+            bg=self._cfg.colors.footer_bg,
+            font=self._cfg.fonts.badge,
         )
         self._undo_msg.pack(side="left")
         self._undo_btn = tk.Label(
             self._undo_frame,
-            text=config.string("undo_action"),
-            fg=config.link_color,
-            bg=config.footer_bg,
-            font=(*config.font_footer[:2], "bold"),
+            text=self._cfg.string("undo_action"),
+            fg=self._cfg.colors.link_color,
+            bg=self._cfg.colors.footer_bg,
+            font=(*self._cfg.fonts.footer[:2], "bold"),
             cursor="hand2",
         )
-        self._undo_btn.pack(side="left", padx=(config.spacing_sm, 0))
+        self._undo_btn.pack(side="left", padx=(self._cfg.spacing.sm, 0))
         self._undo_btn.bind("<Button-1>", lambda _: self._undo_clicked())
         self._undo_visible = False
 
@@ -85,15 +87,15 @@ class FooterBar(tk.Frame):
         self._undo_msg.config(text=message)
         if not self._undo_visible:
             self._badge_label.pack_forget()
-            self._undo_frame.pack(side="left", padx=config.spacing_lg)
+            self._undo_frame.pack(side="left", padx=self._cfg.spacing.lg)
             self._undo_visible = True
-        self._undo_after_id = self.after(config.undo_timeout_ms, self.hide_undo)
+        self._undo_after_id = self.after(self._cfg.settings.undo_timeout_ms, self.hide_undo)
 
     def hide_undo(self) -> None:
         self._cancel_undo_timer()
         if self._undo_visible:
             self._undo_frame.pack_forget()
-            self._badge_label.pack(side="left", padx=config.spacing_lg)
+            self._badge_label.pack(side="left", padx=self._cfg.spacing.lg)
             self._undo_visible = False
 
     def _cancel_undo_timer(self) -> None:
@@ -109,18 +111,18 @@ class FooterBar(tk.Frame):
         if total == 0:
             self._badge_label.config(text="")
         else:
-            self._badge_label.config(text=config.string("badge_format", done=done, total=total))
+            self._badge_label.config(text=self._cfg.string("badge_format", done=done, total=total))
         if done > 0:
-            self._clear_btn.config(text=config.string("clear_completed", count=done))
-            self._clear_btn.pack(side="right", padx=config.spacing_lg)
+            self._clear_btn.config(text=self._cfg.string("clear_completed", count=done))
+            self._clear_btn.pack(side="right", padx=self._cfg.spacing.lg)
         else:
             self._clear_btn.pack_forget()
 
     def _on_hover(self, event: tk.Event | None = None) -> None:
         self._clear_btn.config(
-            fg=config.link_hover,
-            font=(*config.font_footer[:2], "underline"),
+            fg=self._cfg.colors.link_hover,
+            font=(*self._cfg.fonts.footer[:2], "underline"),
         )
 
     def _on_leave(self, event: tk.Event | None = None) -> None:
-        self._clear_btn.config(fg=config.link_color, font=config.font_footer)
+        self._clear_btn.config(fg=self._cfg.colors.link_color, font=self._cfg.fonts.footer)
