@@ -1064,6 +1064,43 @@ def test_focus_moving_inside_the_window_does_not_fade_it(app_window, tmp_path, m
         app._on_close()
 
 
+# ── Single instance (#15) ────────────────────
+
+
+def test_activation_request_brings_the_window_to_the_front(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    shown = []
+    monkeypatch.setattr(app.window_ctrl, "bring_to_front", lambda: shown.append(True))
+    requests = iter([False, True])
+    try:
+        app.listen_for_activation(lambda: next(requests, False))
+        assert shown == []  # first poll: no request
+        app._poll_activation()  # next poll: a second launch asked to show
+        assert shown == [True]
+        assert app._activation_after_id is not None  # keeps listening
+    finally:
+        app._on_close()
+    assert app._activation_after_id is None
+
+
+def test_bring_to_front_restores_a_minimized_window(app_window, tmp_path, monkeypatch):
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tmp_path / "tasks.json"))
+    app = FlyNotesApp(app_window)
+    try:
+        app.toggle_always_on_top()  # off: surfacing must not leave it pinned
+        app.window_ctrl.minimize_window()
+        assert app_window.state() == "withdrawn"
+
+        app.window_ctrl.bring_to_front()
+        app_window.update()
+        assert app_window.state() == "normal"
+        assert not app.window_ctrl._was_minimized
+        assert not _topmost(app_window)
+    finally:
+        app._on_close()
+
+
 # ── Keyboard navigation (#13) ────────────────
 
 NAV_TASKS = [
