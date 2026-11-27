@@ -68,7 +68,7 @@ FLY_NOTES/
 │   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
 │   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
 ├── tests/                     # pytest suite (task manager, config, UI logic, resize geometry)
-├── docs/                      # Historical maintainability audits (issues.md, issues_v2.md, issues-v3.md)
+├── docs/                      # Contributor notes (AGENTS.md: tooling conventions)
 ├── config.json                # Optional — your local overrides (not tracked; see below)
 ├── tasks.json                 # Your task data (created on first run)
 ├── FlyNotes.spec              # PyInstaller build spec
