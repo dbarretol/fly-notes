@@ -29,6 +29,19 @@ reliable minimize/restore using a taskbar proxy window.
 
 _(Add a screenshot or GIF here)_
 
+## Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl+N` | Focus the new-task field |
+| `Enter` | Add the typed task |
+| `Esc` | Clear the new-task field (never closes the app) |
+| `Ctrl+D` | Clear completed tasks (asks for confirmation) |
+| `Ctrl+W` | Close Fly Notes |
+
+All of them can be changed in the `shortcuts` section of `config.json`, using Tk event
+syntax (e.g. `"close": "<Control-q>"`).
+
 ## Requirements
 
 - **Windows 11** (primary supported experience — see [Platform Notes](#platform-notes--limitations))
