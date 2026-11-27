@@ -49,7 +49,7 @@ class TaskItem(tk.Frame):
 
     def __init__(
         self,
-        master: tk.Widget,
+        master: tk.Misc,
         cfg: AppConfig,
         task_id: str,
         text: str,
@@ -308,7 +308,7 @@ class TaskItem(tk.Frame):
         editor.bind("<Escape>", self._cancel_edit_event)
         editor.bind("<FocusOut>", lambda e: self.commit_edit())
         self._label.pack_forget()
-        editor.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        self._pack_main(editor)
         self._editor = editor
         editor.focus_set()
 
@@ -342,14 +342,17 @@ class TaskItem(tk.Frame):
         had_focus = editor is not None and editor.focus_get() is editor
         if editor is not None:
             editor.destroy()
-        self._label.pack(side="left", fill="x", expand=True, before=self._pack_anchor())
+        self._pack_main(self._label)
         if had_focus:
             self.winfo_toplevel().focus_set()
         self._refit()
 
-    def _pack_anchor(self) -> tk.Widget | None:
-        """The widget the label/editor must be packed before (keeps the delete button last)."""
-        return self._delete_btn if self._delete_visible else None
+    def _pack_main(self, widget: tk.Widget) -> None:
+        """Pack the label or editor, before the delete button when it shows (it stays last)."""
+        if self._delete_visible:
+            widget.pack(side="left", fill="x", expand=True, before=self._delete_btn)
+        else:
+            widget.pack(side="left", fill="x", expand=True)
 
     # ── Hover ────────────────────────────────
 

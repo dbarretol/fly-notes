@@ -14,7 +14,7 @@ class FooterBar(tk.Frame):
 
     def __init__(
         self,
-        master: tk.Widget,
+        master: tk.Misc,
         cfg: AppConfig,
         on_clear: Callable[[], None],
         on_undo: Callable[[], None] | None = None,

@@ -18,7 +18,7 @@ class CustomCheckbox(tk.Canvas):
 
     def __init__(
         self,
-        master: tk.Widget,
+        master: tk.Misc,
         size: int = 18,
         checked: bool = False,
         command: Callable[[], None] | None = None,

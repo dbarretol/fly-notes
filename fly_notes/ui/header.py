@@ -14,10 +14,10 @@ class HeaderBar(tk.Frame):
 
     def __init__(
         self,
-        master: tk.Widget,
+        master: tk.Misc,
         cfg: AppConfig,
-        on_close: callable,
-        on_minimize: callable,
+        on_close: Callable[[], None],
+        on_minimize: Callable[[], None],
         on_toggle_pin: Callable[[], None] | None = None,
         pinned: bool = True,
         **kwargs: Any,
@@ -89,7 +89,7 @@ class HeaderBar(tk.Frame):
         # Always-on-top pin
         self._pin_btn = tk.Button(
             self,
-            command=on_toggle_pin,
+            command=on_toggle_pin or "",
             bg=self._cfg.colors.header_bg,
             fg=self._cfg.colors.text_on_header,
             bd=0,
