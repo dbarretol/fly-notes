@@ -3,6 +3,7 @@ Fly Notes — Lightweight floating sticky-notes task manager.
 Entry point: configures the platform, creates the root window, and launches the app.
 """
 
+import atexit
 import logging
 import sys
 import tkinter as tk
@@ -40,7 +41,10 @@ def main() -> None:
     # no intente operaciones gráficas durante la carga del módulo.
     from fly_notes.fly_notes_app import FlyNotesApp
 
-    _app = FlyNotesApp(root)  # keep a reference for the lifetime of the mainloop
+    app = FlyNotesApp(root)
+    # Safety net: persist any change still waiting on the save debounce if the
+    # process exits by a path that bypasses the app's close handler.
+    atexit.register(app.manager.flush)
     root.deiconify()
     root.mainloop()
 
