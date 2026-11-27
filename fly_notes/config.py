@@ -361,7 +361,7 @@ def _validate_strings(strings: dict[str, Any]) -> None:
 # Typed configuration
 # ──────────────────────────────────────────────
 
-Font = tuple[str | int, ...]
+Font = tuple[str, int, *tuple[str, ...]]
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,7 +13,7 @@ from .task_item import TaskItem
 class TaskListView(tk.Frame):
     """Scrollable canvas hosting TaskItem widgets with optional grouping."""
 
-    def __init__(self, master: tk.Widget, cfg: AppConfig, **kwargs: Any) -> None:
+    def __init__(self, master: tk.Misc, cfg: AppConfig, **kwargs: Any) -> None:
         self._cfg = cfg
         super().__init__(
             master,
@@ -380,7 +380,7 @@ class TaskListView(tk.Frame):
         row_height = min(w.winfo_reqheight() for w in self._task_widgets) + 2 * self._cfg.spacing.xs
         self._canvas.config(yscrollincrement=max(1, row_height))
 
-    def _scrollbar_set(self, first: str, last: str) -> None:
+    def _scrollbar_set(self, first: float | str, last: float | str) -> None:
         self._scrollbar.set(first, last)
         first_f, last_f = float(first), float(last)
         needs_scroll = not (first_f <= 0.0 and last_f >= 1.0)

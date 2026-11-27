@@ -60,7 +60,7 @@ class TkScheduler:
 class FlyNotesApp:
     """Top-level controller for the Fly Notes application."""
 
-    def __init__(self, root: tk.Tk, cfg: AppConfig) -> None:
+    def __init__(self, root: tk.Tk | tk.Toplevel, cfg: AppConfig) -> None:
         self._cfg = cfg
         self.root = root
         self.root.title(self._cfg.string("app_title"))

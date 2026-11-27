@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from typing import Any
 
 from ..config import AppConfig
@@ -13,9 +14,9 @@ class TaskEntryBar(tk.Frame):
 
     def __init__(
         self,
-        master: tk.Widget,
+        master: tk.Misc,
         cfg: AppConfig,
-        on_submit: callable,
+        on_submit: Callable[[str], None],
         **kwargs: Any,
     ) -> None:
         self._cfg = cfg

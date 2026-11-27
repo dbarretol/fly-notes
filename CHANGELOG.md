@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   share their Tk fixtures through `tests/conftest.py`, and the ones that need a display are
   marked `gui`. `TaskItem` keeps its child widgets private and offers `bind_scroll()`, which
   also makes the mouse wheel work over the padding around a task's text. ([#22])
+- The code is type-checked with pyright in CI, and imports sit at the top of each file
+  (ruff `PLC0415`). Callback parameters typed with the builtin `callable` now use
+  `Callable[..., None]`. ([#23])
 
 ### Fixed
 
@@ -163,3 +166,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#20]: https://github.com/dbarretol/fly-notes/issues/20
 [#21]: https://github.com/dbarretol/fly-notes/issues/21
 [#22]: https://github.com/dbarretol/fly-notes/issues/22
+[#23]: https://github.com/dbarretol/fly-notes/issues/23

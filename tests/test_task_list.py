@@ -4,6 +4,7 @@ import tkinter as tk
 
 import pytest
 
+from fly_notes.config import _CONTRAST_PAIRS
 from fly_notes.model.store import TaskManager
 from fly_notes.ui.task_item import TaskItem
 from fly_notes.ui.task_list import TaskListView
@@ -252,6 +253,7 @@ def _packed_ids(widgets):
 def test_show_more_link_names_the_next_page_and_the_total(capped_list, cfg):
     task_list, widgets = capped_list
     link = _show_more_link(task_list)
+    assert link is not None
     assert link.cget("text") == cfg.string("more_hidden_paged", count=3, hidden=5)
     assert _packed_ids(widgets) == ["0", "1", "2"]
 
@@ -259,9 +261,12 @@ def test_show_more_link_names_the_next_page_and_the_total(capped_list, cfg):
 def test_clicking_show_more_reveals_one_page_at_a_time(capped_list, cfg):
     task_list, widgets = capped_list
 
-    _show_more_link(task_list).event_generate("<Button-1>")
+    link = _show_more_link(task_list)
+    assert link is not None
+    link.event_generate("<Button-1>")
     assert _packed_ids(widgets) == ["0", "1", "2", "3", "4", "5"]
     link = _show_more_link(task_list)
+    assert link is not None
     assert link.cget("text") == cfg.string("more_hidden", count=2)
 
     link.event_generate("<Button-1>")
@@ -272,6 +277,7 @@ def test_clicking_show_more_reveals_one_page_at_a_time(capped_list, cfg):
 def test_show_more_works_from_the_keyboard(capped_list):
     task_list, _ = capped_list
     link = _show_more_link(task_list)
+    assert link is not None
     assert int(link.cget("takefocus")) == 1
     assert link.bind("<Return>")
     assert link.bind("<space>")
@@ -286,7 +292,6 @@ def test_revealed_rows_stay_visible_after_a_repack(capped_list):
 
 
 def test_link_color_is_validated_against_the_list_background():
-    from fly_notes.config import _CONTRAST_PAIRS
 
     assert ("link_color", "content_bg", 4.5) in _CONTRAST_PAIRS
 

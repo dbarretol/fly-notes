@@ -1,8 +1,10 @@
 """WindowController: borderless window, resize, icon and taskbar proxy."""
 
 import logging
+import tkinter as tk
 import types
 from pathlib import Path
+from typing import cast
 
 from fly_notes.config import ICON_PATH
 from fly_notes.platform import window_controller as window_controller_module
@@ -30,8 +32,9 @@ def test_resize_callback_receives_width_without_stale_reread(root, cfg):
         root.geometry("320x440+100+100")
         root.update_idletasks()
 
-        ctrl._start_resize("e", types.SimpleNamespace(x_root=500, y_root=500))
-        ctrl._do_resize(types.SimpleNamespace(x_root=560, y_root=500))  # +60px east
+        ctrl._start_resize("e", cast(tk.Event, types.SimpleNamespace(x_root=500, y_root=500)))
+        # +60px east
+        ctrl._do_resize(cast(tk.Event, types.SimpleNamespace(x_root=560, y_root=500)))
 
         assert received == [380]
 

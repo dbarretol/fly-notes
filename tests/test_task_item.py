@@ -1,6 +1,8 @@
 """TaskItem: one task row (card, wrapping, inline edit, focus ring)."""
 
 import tkinter as tk
+import types
+from typing import cast
 
 from fly_notes.ui.task_item import TaskItem
 from fly_notes.ui.task_list import TaskListView
@@ -48,10 +50,11 @@ def test_task_item_drag_callbacks(root, cfg):
         root, cfg, task_id="123", text="Drag Task", on_drag_start=on_start, on_drag_stop=on_stop
     )
 
-    item._start_drag(None)
+    event = cast(tk.Event, types.SimpleNamespace(x_root=0, y_root=0))
+    item._start_drag(event)
     assert start_called is True
 
-    item._stop_drag(None)
+    item._stop_drag(event)
     assert stop_called is True
     item.destroy()
 
@@ -288,15 +291,21 @@ def _editable_item(root, cfg, text="Original", on_text_change=None):
     return win, item
 
 
+def _editor(item):
+    """The inline editor of an item that is being edited."""
+    assert item._editor is not None
+    return item._editor
+
+
 def test_begin_edit_swaps_label_for_entry_with_the_task_text(root, cfg):
     win, item = _editable_item(root, cfg)
     try:
         item.begin_edit()
         assert item.is_editing
-        assert item._editor.get() == "Original"
+        assert _editor(item).get() == "Original"
         assert not item._label.winfo_manager()
         item.begin_edit()  # second call is a no-op
-        assert item._editor.get() == "Original"
+        assert _editor(item).get() == "Original"
     finally:
         win.destroy()
 
@@ -311,8 +320,8 @@ def test_enter_saves_the_edit_through_the_callback(root, cfg):
     win, item = _editable_item(root, cfg, on_text_change=on_change)
     try:
         item.begin_edit()
-        item._editor.delete(0, tk.END)
-        item._editor.insert(0, " Fixed ")
+        _editor(item).delete(0, tk.END)
+        _editor(item).insert(0, " Fixed ")
         assert item._commit_edit_event() == "break"
 
         assert calls == [" Fixed "]
@@ -329,8 +338,8 @@ def test_escape_cancels_the_edit_without_calling_back(root, cfg):
     win, item = _editable_item(root, cfg, on_text_change=lambda i, t: calls.append(t) or t)
     try:
         item.begin_edit()
-        item._editor.delete(0, tk.END)
-        item._editor.insert(0, "changed")
+        _editor(item).delete(0, tk.END)
+        _editor(item).insert(0, "changed")
         assert item._cancel_edit_event() == "break"
 
         assert calls == []
@@ -345,7 +354,7 @@ def test_rejected_edit_keeps_the_original_text(root, cfg):
     win, item = _editable_item(root, cfg, on_text_change=lambda i, t: None)
     try:
         item.begin_edit()
-        item._editor.delete(0, tk.END)
+        _editor(item).delete(0, tk.END)
         item.commit_edit()
 
         assert item._label.cget("text") == "Original"
@@ -359,7 +368,7 @@ def test_edited_text_rewraps_the_card(root, cfg):
     try:
         short_height = item._card_canvas.winfo_height()
         item.begin_edit()
-        item._editor.insert(tk.END, " " + LONG_TEXT)
+        _editor(item).insert(tk.END, " " + LONG_TEXT)
         item.commit_edit()
         win.update()
 
