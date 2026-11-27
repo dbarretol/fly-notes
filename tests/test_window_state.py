@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from fly_notes.window_state import (
+from fly_notes.platform.window_state import (
     Rect,
     WindowGeometry,
     choose_geometry,
