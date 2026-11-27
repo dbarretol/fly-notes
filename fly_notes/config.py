@@ -89,7 +89,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "header_height": 38,
         "footer_height": 32,
         "border_radius": 6,
-        "animation_ms": 150,
         "confirm_delete": False,
         "undo_timeout_ms": 5000,
         # Starting value only: the header pin (or Ctrl+T) choice is remembered in state.json.
@@ -248,54 +247,114 @@ def _validate_contrast(colors: dict[str, str]) -> None:
             pass
 
 
-def _validate_transparency(trans: dict[str, float]) -> None:
+def _is_int(value: Any) -> bool:
+    """A real int: ``bool`` is an ``int`` subclass, but ``true`` is not a size."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_transparency(trans: dict[str, Any]) -> None:
     for key in ("active", "inactive"):
-        val = trans.get(key)
-        if not isinstance(val, (int, float)) or not (0.0 <= val <= 1.0):
-            raise ValueError(f"transparency.{key}: must be float 0.0-1.0, got {val!r}")
+        if key not in trans:
+            continue
+        val = trans[key]
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or not 0.0 < val <= 1.0:
+            raise ValueError(
+                f"transparency.{key}: must be a number above 0 and up to 1, got {val!r}"
+            )
+    if "active" in trans and "inactive" in trans and trans["inactive"] > trans["active"]:
+        raise ValueError(
+            f"transparency.inactive ({trans['inactive']}) must not be above "
+            f"transparency.active ({trans['active']})"
+        )
+
+
+# Settings that must be at least 1: a zero size, limit or delay would break the window.
+_POSITIVE_INT_SETTINGS = (
+    "default_width",
+    "default_height",
+    "min_width",
+    "min_height",
+    "drag_threshold",
+    "max_task_length",
+    "header_height",
+    "footer_height",
+    "max_visible_tasks",
+    "checkbox_size",
+    "scrollbar_width",
+    "undo_timeout_ms",
+)
+# Settings where 0 is meaningful (no padding, square corners, no separator, fade at once).
+_NON_NEGATIVE_INT_SETTINGS = (
+    "item_padding_y",
+    "item_padding_x",
+    "border_radius",
+    "separator_height",
+    "inactive_fade_delay_ms",
+)
+_BOOL_SETTINGS = ("confirm_delete", "group_completed", "always_on_top")
 
 
 def _validate_settings(settings: dict[str, Any]) -> None:
-    int_keys = (
-        "default_width",
-        "default_height",
-        "drag_threshold",
-        "min_width",
-        "min_height",
-        "max_task_length",
-        "item_padding_y",
-        "item_padding_x",
-        "header_height",
-        "footer_height",
-        "border_radius",
-        "animation_ms",
-        "max_visible_tasks",
-        "checkbox_size",
-        "separator_height",
-        "scrollbar_width",
-        "undo_timeout_ms",
-        "inactive_fade_delay_ms",
-    )
-    for key in int_keys:
-        val = settings.get(key)
-        if val is not None and (not isinstance(val, int) or val < 0):
-            raise ValueError(f"settings.{key}: must be a positive int, got {val!r}")
+    for key in _POSITIVE_INT_SETTINGS:
+        if key in settings and not (_is_int(settings[key]) and settings[key] >= 1):
+            raise ValueError(
+                f"settings.{key}: must be a whole number of 1 or more, got {settings[key]!r}"
+            )
+    for key in _NON_NEGATIVE_INT_SETTINGS:
+        if key in settings and not (_is_int(settings[key]) and settings[key] >= 0):
+            raise ValueError(
+                f"settings.{key}: must be a whole number of 0 or more, got {settings[key]!r}"
+            )
+    for key in _BOOL_SETTINGS:
+        if key in settings and not isinstance(settings[key], bool):
+            raise ValueError(f"settings.{key}: must be true or false, got {settings[key]!r}")
 
-    bool_keys = ("confirm_delete", "group_completed", "always_on_top")
-    for key in bool_keys:
-        val = settings.get(key)
-        if val is not None and not isinstance(val, bool):
-            raise ValueError(f"settings.{key}: must be a bool, got {val!r}")
+    if "tasks_file" in settings:
+        tf = settings["tasks_file"]
+        if not isinstance(tf, str) or not tf.strip():
+            raise ValueError(f"settings.tasks_file: must be a non-empty string path, got {tf!r}")
 
-    tf = settings.get("tasks_file")
-    if tf is not None and (not isinstance(tf, str) or not tf.strip()):
-        raise ValueError(f"settings.tasks_file: must be a non-empty string path, got {tf!r}")
+    for minimum, default in (("min_width", "default_width"), ("min_height", "default_height")):
+        if minimum in settings and default in settings and settings[minimum] > settings[default]:
+            raise ValueError(
+                f"settings.{minimum} ({settings[minimum]}) must not be above "
+                f"settings.{default} ({settings[default]})"
+            )
 
 
-def _validate_fonts(fonts: dict[str, list]) -> None:
+def _validate_spacing(spacing: dict[str, Any]) -> None:
+    for key, val in spacing.items():
+        if not (_is_int(val) and val >= 0):
+            raise ValueError(f"spacing.{key}: must be a whole number of 0 or more, got {val!r}")
+
+
+def _validate_fonts(fonts: dict[str, Any]) -> None:
     for key, val in fonts.items():
         if not isinstance(val, list) or len(val) < 2:
             raise ValueError(f"fonts.{key}: expected [family, size, ...], got {val!r}")
+        family, size, *styles = val
+        if not isinstance(family, str) or not family.strip():
+            raise ValueError(f"fonts.{key}: the family must be a non-empty string, got {family!r}")
+        # Tk reads a positive size as points and a negative one as pixels; 0 is meaningless.
+        if not _is_int(size) or size == 0:
+            raise ValueError(f"fonts.{key}: the size must be a non-zero whole number, got {size!r}")
+        if not all(isinstance(style, str) for style in styles):
+            raise ValueError(f'fonts.{key}: styles must be strings like "bold", got {styles!r}')
+
+
+def _validate_shortcuts(shortcuts: dict[str, Any]) -> None:
+    """Shape only. Whether Tk accepts the sequence is checked when it is bound."""
+    for key, val in shortcuts.items():
+        if not isinstance(val, str) or not val.strip():
+            raise ValueError(
+                f'shortcuts.{key}: must be a Tk key sequence like "<Control-n>", got {val!r}'
+            )
+
+
+def _validate_strings(strings: dict[str, Any]) -> None:
+    for key, val in strings.items():
+        if not isinstance(val, str):
+            raise ValueError(f"strings.{key}: must be text, got {val!r}")
 
 
 # ──────────────────────────────────────────────
@@ -377,7 +436,6 @@ class Settings:
     header_height: int
     footer_height: int
     border_radius: int
-    animation_ms: int
     confirm_delete: bool
     undo_timeout_ms: int
     always_on_top: bool
@@ -540,7 +598,10 @@ def _validate_structure(data: dict[str, Any]) -> None:
     _validate_colors(data["colors"])
     _validate_transparency(data["transparency"])
     _validate_settings(data["settings"])
+    _validate_spacing(data["spacing"])
     _validate_fonts(data["fonts"])
+    _validate_shortcuts(data["shortcuts"])
+    _validate_strings(data["strings"])
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
