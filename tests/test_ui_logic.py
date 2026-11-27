@@ -1,3 +1,4 @@
+import json
 import logging
 import tkinter as tk
 import types
@@ -540,3 +541,35 @@ def test_window_controller_missing_icon_warns_and_does_not_raise(root, monkeypat
     finally:
         root.withdraw()
         ctrl._proxy.destroy()
+
+
+# ── Closing from the taskbar ─────────────────
+
+
+def test_proxy_close_delegates_to_on_close_callback(root):
+    calls = []
+    ctrl = WindowController(root, on_close=lambda: calls.append("closed"))
+    try:
+        ctrl._on_proxy_close()
+        assert calls == ["closed"]
+    finally:
+        root.withdraw()
+        ctrl._proxy.destroy()
+
+
+def test_closing_from_taskbar_flushes_pending_save(tmp_path, monkeypatch):
+    """A change made right before closing via the taskbar entry must reach
+    disk, even though saves are debounced."""
+    tasks_file = tmp_path / "tasks.json"
+    monkeypatch.setitem(config._attr_cache, "tasks_file", str(tasks_file))
+    app_root = tk.Tk()
+    app_root.withdraw()
+    app = FlyNotesApp(app_root)
+    app.manager.SAVE_DELAY = 60  # make sure only the close path can write
+    app.manager.add_task("written just before closing")
+    assert not tasks_file.exists()
+
+    app.window_ctrl._on_proxy_close()
+
+    saved = json.loads(tasks_file.read_text(encoding="utf-8"))
+    assert [t["text"] for t in saved] == ["written just before closing"]
