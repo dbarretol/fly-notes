@@ -10,16 +10,22 @@ Self-contained task-row widget with:
 from __future__ import annotations
 
 import tkinter as tk
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 from .config import blend_alpha_hex, config
 
 
 def draw_rounded_rect(
     canvas: tk.Canvas,
-    x1: float, y1: float, x2: float, y2: float,
-    r: float, fill: str, outline: str, width: float,
-    tags: Tuple[str, ...] = (),
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    r: float,
+    fill: str,
+    outline: str,
+    width: float,
+    tags: tuple[str, ...] = (),
 ) -> None:
     """Draw a rounded rectangle on *canvas* using arcs + fill rects.
 
@@ -27,14 +33,58 @@ def draw_rounded_rect(
     same corner-drawing logic isn't duplicated per widget.
     """
     d = r * 2
-    canvas.create_arc(x1, y1, x1 + d, y1 + d, start=90, extent=90,
-                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
-    canvas.create_arc(x2 - d, y1, x2, y1 + d, start=0, extent=90,
-                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
-    canvas.create_arc(x1, y2 - d, x1 + d, y2, start=180, extent=90,
-                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
-    canvas.create_arc(x2 - d, y2 - d, x2, y2, start=270, extent=90,
-                       fill=fill, outline=outline, width=width, style="pieslice", tags=tags)
+    canvas.create_arc(
+        x1,
+        y1,
+        x1 + d,
+        y1 + d,
+        start=90,
+        extent=90,
+        fill=fill,
+        outline=outline,
+        width=width,
+        style="pieslice",
+        tags=tags,
+    )
+    canvas.create_arc(
+        x2 - d,
+        y1,
+        x2,
+        y1 + d,
+        start=0,
+        extent=90,
+        fill=fill,
+        outline=outline,
+        width=width,
+        style="pieslice",
+        tags=tags,
+    )
+    canvas.create_arc(
+        x1,
+        y2 - d,
+        x1 + d,
+        y2,
+        start=180,
+        extent=90,
+        fill=fill,
+        outline=outline,
+        width=width,
+        style="pieslice",
+        tags=tags,
+    )
+    canvas.create_arc(
+        x2 - d,
+        y2 - d,
+        x2,
+        y2,
+        start=270,
+        extent=90,
+        fill=fill,
+        outline=outline,
+        width=width,
+        style="pieslice",
+        tags=tags,
+    )
     # Fill center regions
     canvas.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill, tags=tags)
     canvas.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill, tags=tags)
@@ -55,7 +105,7 @@ class CustomCheckbox(tk.Canvas):
         master: tk.Widget,
         size: int = 18,
         checked: bool = False,
-        command: Optional[Callable[[], None]] = None,
+        command: Callable[[], None] | None = None,
         bg: str = "#FFFFFF",
         check_color: str = "#B35C00",
         border_color: str = "#B0977A",
@@ -102,18 +152,18 @@ class CustomCheckbox(tk.Canvas):
             self._checked = value
             self._draw()
 
-    def _on_click(self, event: tk.Event = None) -> None:
+    def _on_click(self, event: tk.Event | None = None) -> None:
         self._checked = not self._checked
         self._draw()
         if self._command:
             self._command()
 
-    def _on_enter(self, event: tk.Event = None) -> None:
+    def _on_enter(self, event: tk.Event | None = None) -> None:
         if not self._is_hovered:
             self._is_hovered = True
             self._draw()
 
-    def _on_leave(self, event: tk.Event = None) -> None:
+    def _on_leave(self, event: tk.Event | None = None) -> None:
         if self._is_hovered:
             self._is_hovered = False
             self._draw()
@@ -146,18 +196,34 @@ class CustomCheckbox(tk.Canvas):
             cx, cy = s / 2, s / 2
             cw = self._check_width
             self.create_line(
-                cx - 4, cy, cx - 1, cy + 3,
-                fill="white", width=cw, capstyle="round",
+                cx - 4,
+                cy,
+                cx - 1,
+                cy + 3,
+                fill="white",
+                width=cw,
+                capstyle="round",
             )
             self.create_line(
-                cx - 1, cy + 3, cx + 5, cy - 4,
-                fill="white", width=cw, capstyle="round",
+                cx - 1,
+                cy + 3,
+                cx + 5,
+                cy - 4,
+                fill="white",
+                width=cw,
+                capstyle="round",
             )
 
     def _draw_rounded_rect(
         self,
-        x1: float, y1: float, x2: float, y2: float,
-        r: int, fill: str, outline: str, width: float,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        r: int,
+        fill: str,
+        outline: str,
+        width: float,
     ) -> None:
         """Draw a rounded rectangle using arcs and rectangles."""
         draw_rounded_rect(self, x1, y1, x2, y2, r, fill, outline, width)
@@ -180,11 +246,11 @@ class TaskItem(tk.Frame):
         task_id: str,
         text: str,
         completed: bool = False,
-        on_status_change: Optional[Callable[["TaskItem"], None]] = None,
-        on_delete: Optional[Callable[["TaskItem"], None]] = None,
-        on_drag_start: Optional[Callable[["TaskItem", tk.Event], None]] = None,
-        on_drag_do: Optional[Callable[["TaskItem", tk.Event], None]] = None,
-        on_drag_stop: Optional[Callable[["TaskItem", tk.Event], None]] = None,
+        on_status_change: Callable[[TaskItem], None] | None = None,
+        on_delete: Callable[[TaskItem], None] | None = None,
+        on_drag_start: Callable[[TaskItem, tk.Event], None] | None = None,
+        on_drag_do: Callable[[TaskItem, tk.Event], None] | None = None,
+        on_drag_stop: Callable[[TaskItem, tk.Event], None] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -221,17 +287,25 @@ class TaskItem(tk.Frame):
         # is inset by _radius — the drawn corners are never covered by the
         # (square-cornered) content frame sitting on top of them.
         self.card_canvas = tk.Canvas(
-            self, bg=config.content_bg, highlightthickness=0, bd=0,
+            self,
+            bg=config.content_bg,
+            highlightthickness=0,
+            bd=0,
         )
         self.card_canvas.pack(fill="both", expand=True)
         self.card_canvas.bind("<Configure>", self._on_canvas_configure)
 
         self._content = tk.Frame(
-            self.card_canvas, bg=self._card_fill,
-            padx=config.item_padding_x, pady=config.item_padding_y,
+            self.card_canvas,
+            bg=self._card_fill,
+            padx=config.item_padding_x,
+            pady=config.item_padding_y,
         )
         self._content_win = self.card_canvas.create_window(
-            self._radius, self._radius, window=self._content, anchor="nw",
+            self._radius,
+            self._radius,
+            window=self._content,
+            anchor="nw",
         )
 
         # ── Custom Checkbox ─────────────────
@@ -323,7 +397,7 @@ class TaskItem(tk.Frame):
 
     # ── Hover ────────────────────────────────
 
-    def _on_enter(self, event: tk.Event = None) -> None:
+    def _on_enter(self, event: tk.Event | None = None) -> None:
         if self._is_dragging:
             return
         self._is_hovered = True
@@ -332,7 +406,7 @@ class TaskItem(tk.Frame):
             self._set_row_bg(config.drag_highlight_color)
         self.card_canvas.config(cursor="hand2")
 
-    def _on_leave(self, event: tk.Event = None) -> None:
+    def _on_leave(self, event: tk.Event | None = None) -> None:
         if self._is_dragging:
             return
         if self._pointer_still_inside():
@@ -342,11 +416,11 @@ class TaskItem(tk.Frame):
         self._apply_base_bg()
         self.card_canvas.config(cursor="")
 
-    def _on_delete_btn_enter(self, event: tk.Event = None) -> None:
+    def _on_delete_btn_enter(self, event: tk.Event | None = None) -> None:
         self._is_hovered = True
         self.delete_btn.config(bg=config.btn_danger_bg, fg="#FFFFFF")
 
-    def _on_delete_btn_leave(self, event: tk.Event = None) -> None:
+    def _on_delete_btn_leave(self, event: tk.Event | None = None) -> None:
         bg = self._current_base_bg()
         self.delete_btn.config(bg=bg, fg=config.text_secondary)
         if not self._pointer_still_inside():
@@ -446,7 +520,7 @@ class TaskItem(tk.Frame):
         self.card_canvas.itemconfigure(self._content_win, width=content_width)
         self._redraw_card(event.width, event.height)
 
-    def _redraw_card(self, width: Optional[int] = None, height: Optional[int] = None) -> None:
+    def _redraw_card(self, width: int | None = None, height: int | None = None) -> None:
         w = width if width is not None else self.card_canvas.winfo_width()
         h = height if height is not None else self.card_canvas.winfo_height()
         if w <= 1 or h <= 1:
@@ -461,13 +535,29 @@ class TaskItem(tk.Frame):
         # real alpha compositing support in Tk.
         shadow_fill = blend_alpha_hex(config.shadow_color, config.content_bg)
         draw_rounded_rect(
-            self.card_canvas, off, off, w, h, r,
-            fill=shadow_fill, outline=shadow_fill, width=0, tags=("card",),
+            self.card_canvas,
+            off,
+            off,
+            w,
+            h,
+            r,
+            fill=shadow_fill,
+            outline=shadow_fill,
+            width=0,
+            tags=("card",),
         )
 
         outline = config.drag_border if self._drag_active else config.border_color
         outline_width = 2 if self._drag_active else 1
         draw_rounded_rect(
-            self.card_canvas, 0, 0, w - off, h - off, r,
-            fill=self._card_fill, outline=outline, width=outline_width, tags=("card",),
+            self.card_canvas,
+            0,
+            0,
+            w - off,
+            h - off,
+            r,
+            fill=self._card_fill,
+            outline=outline,
+            width=outline_width,
+            tags=("card",),
         )

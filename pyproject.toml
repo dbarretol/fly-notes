@@ -1,9 +1,18 @@
 [project]
 name = "fly-notes"
-version = "0.1.0"
-description = "A minimal floating task widget for Windows 11"
+version = "0.1.1"
+description = "A minimal floating, always-on-top task widget for Windows 11, built with Python + Tkinter."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    { name = "Antigravity", email = "antigravity@google.com" }
+    { name = "dbarretol", email = "57958754+dbarretol@users.noreply.github.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: Win32 (MS Windows)",
+    "Topic :: Office/Business :: Scheduling",
 ]
 requires-python = ">=3.12"
 dependencies = []
@@ -13,15 +22,31 @@ dev = [
     "pyinstaller",
     "pytest",
     "pytest-cov>=7.1.0",
+    "ruff>=0.17",
 ]
 
 [project.scripts]
-fly-notes = "main:main"
+fly-notes = "fly_notes.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/dbarretol/fly-notes"
+Issues = "https://github.com/dbarretol/fly-notes/issues"
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["main"]
 packages = ["fly_notes"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

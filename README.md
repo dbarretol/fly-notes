@@ -20,11 +20,27 @@ reliable minimize/restore using a taskbar proxy window.
 - **8-direction manual resizing**: drag any edge or corner
 - **Reliable minimize/restore on Windows 11**, via a **Taskbar Proxy Window** strategy
 - **Debounced, atomic persistence** to a local `tasks.json` (survives crashes mid-write)
+  - The previous version is kept as `tasks.json.bak`. If `tasks.json` ever becomes
+    unreadable, it is moved aside as `tasks.corrupt-<timestamp>.json` (never overwritten)
+    and the backup is restored automatically.
 - **Fully configurable** — colors, spacing, fonts, shortcuts and behavior via `config.json`
 
 ## Screens / Demo
 
 _(Add a screenshot or GIF here)_
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl+N` | Focus the new-task field |
+| `Enter` | Add the typed task |
+| `Esc` | Clear the new-task field (never closes the app) |
+| `Ctrl+D` | Clear completed tasks (asks for confirmation) |
+| `Ctrl+W` | Close Fly Notes |
+
+All of them can be changed in the `shortcuts` section of `config.json`, using Tk event
+syntax (e.g. `"close": "<Control-q>"`).
 
 ## Requirements
 
@@ -53,16 +69,18 @@ uv run main.py
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
-python main.py
+fly-notes            # or: python -m fly_notes
 ```
 
 ## Project Structure
 
 ```
 FLY_NOTES/
-├── main.py                    # Entry point: platform setup, logging, Tk root, mainloop
+├── main.py                    # Thin launcher (also the PyInstaller entry script)
 ├── fly_notes/
+│   ├── __main__.py            # Bootstrap: platform setup, logging, Tk root, mainloop
 │   ├── config.py              # DEFAULT_CONFIG, validation, config.json loading/merging
+│   ├── paths.py               # Where config/data live (source, installed .exe, portable .exe)
 │   ├── task_manager.py        # Task CRUD + debounced atomic JSON persistence (no Tkinter)
 │   ├── task_item.py           # TaskItem row widget + custom checkbox
 │   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
@@ -70,7 +88,7 @@ FLY_NOTES/
 ├── tests/                     # pytest suite (task manager, config, UI logic, resize geometry)
 ├── docs/                      # Contributor notes (AGENTS.md: tooling conventions)
 ├── config.json                # Optional — your local overrides (not tracked; see below)
-├── tasks.json                 # Your task data (created on first run)
+├── tasks.json                 # Your task data when running from source (not tracked)
 ├── FlyNotes.spec              # PyInstaller build spec
 └── pyproject.toml
 ```
@@ -80,7 +98,7 @@ FLY_NOTES/
 Fly Notes ships with sensible defaults (`fly_notes/config.py: DEFAULT_CONFIG`) covering
 colors, spacing, fonts, window size/behavior, keyboard shortcuts and UI strings.
 
-To customize anything, create a `config.json` file **next to `main.py`** (project root).
+To customize anything, create a `config.json` file in the [data folder](#where-your-data-lives).
 You only need to include the keys you want to override — everything else falls back to
 the default. Unknown keys are ignored (with a warning logged), and invalid values
 (e.g. a malformed hex color) cause the whole file to be rejected in favor of defaults,
@@ -106,12 +124,21 @@ Available top-level sections: `colors`, `transparency`, `spacing`, `settings`, `
 `shortcuts`, `strings`. See `fly_notes/config.py` for the full list of keys and their
 defaults.
 
-By default, task data is stored in `tasks.json` at the project root
-(`settings.tasks_file` in config controls this path).
+### Where your data lives
+
+| How you run Fly Notes | `config.json` and `tasks.json` location |
+|---|---|
+| From source (`uv run main.py`) | Project root, next to `main.py` |
+| `FlyNotes.exe` | `%APPDATA%\FlyNotes\` (created on first save) |
+| `FlyNotes.exe`, portable | The executable's folder — used whenever a `config.json` or `tasks.json` already sits next to `FlyNotes.exe` |
+
+`settings.tasks_file` overrides the tasks file location. A relative path is resolved
+against the data folder above; an absolute path (environment variables such as
+`%USERPROFILE%` are expanded) is used as-is.
 
 ## Development
 
-Install dev dependencies (pytest, pytest-cov, pyinstaller):
+Install dev dependencies (pytest, pytest-cov, ruff, pyinstaller):
 
 ```powershell
 uv sync --extra dev
@@ -129,6 +156,20 @@ With coverage:
 uv run pytest tests/ --cov=fly_notes --cov-report=term-missing
 ```
 
+Lint and format (configured in `pyproject.toml`):
+
+```powershell
+uv run ruff check .
+uv run ruff format .
+```
+
+### Branches and CI
+
+Work happens on short-lived branches (`feat/*`, `fix/*`, `chore/*`, `docs/*`) opened as pull
+requests against `dev`; `main` only receives stable releases from `dev`. GitHub Actions
+(`.github/workflows/ci.yml`) runs ruff and the test suite on Windows for every pull request
+and push to `dev` and `main`.
+
 ## Build the .exe (PyInstaller)
 
 ### Using the provided spec (recommended)
@@ -145,12 +186,10 @@ uv run pyinstaller --onefile --noconsole --name FlyNotes main.py --clean
 
 Output: `dist/FlyNotes.exe`
 
-> **Note:** the packaged `.exe` is a PyInstaller *onefile* build — it extracts to a
-> temporary directory on each launch. `config.json`/`tasks.json` paths are resolved
-> relative to the project root when running from source; when running the frozen
-> `.exe`, place `config.json`/`tasks.json` next to the executable itself if you need
-> persistent, editable copies, or point `settings.tasks_file` at an absolute path in
-> your `config.json`.
+> **Note:** the packaged `.exe` is a PyInstaller *onefile* build that extracts itself to a
+> temporary directory on each launch, so it never stores data there. See
+> [Where your data lives](#where-your-data-lives); to run it portably, put a `tasks.json`
+> containing `[]` (or a `config.json`) next to `FlyNotes.exe`.
 
 ## Platform Notes / Limitations
 
@@ -180,4 +219,4 @@ Output: `dist/FlyNotes.exe`
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -12,14 +12,17 @@ import copy
 import json
 import logging
 import os
+import shutil
 import tempfile
 import threading
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-Task = Dict[str, Any]
+Task = dict[str, Any]
 
 _MAX_TEXT_LENGTH = 10_000  # Hard safety limit for loaded task text
 
@@ -37,19 +40,27 @@ class TaskManager:
     def __init__(
         self,
         tasks_file: str = "tasks.json",
-        error_callback: Optional[Callable[[str], None]] = None,
+        error_callback: Callable[[str], None] | None = None,
     ) -> None:
         self.tasks_file = tasks_file
         self.error_callback = error_callback
-        self._tasks: List[Task] = []
-        self._save_timer: Optional[threading.Timer] = None
+        self._tasks: list[Task] = []
+        self._save_timer: threading.Timer | None = None
         self._lock = threading.Lock()
+        # Set when an unreadable tasks file could not be moved aside: saving
+        # would overwrite the user's only copy, so writes are refused instead.
+        self._saves_blocked = False
         self._load_tasks()
+
+    @property
+    def backup_file(self) -> str:
+        """Rolling copy of the previous tasks file, refreshed before every save."""
+        return self.tasks_file + ".bak"
 
     # ── Read access (thread-safe copies) ─────
 
     @property
-    def tasks(self) -> List[Task]:
+    def tasks(self) -> list[Task]:
         """Return a shallow copy of the task list."""
         with self._lock:
             return list(self._tasks)
@@ -69,7 +80,7 @@ class TaskManager:
         with self._lock:
             return len(self._tasks) - sum(1 for t in self._tasks if t["completed"])
 
-    def task_by_id(self, task_id: str) -> Optional[Task]:
+    def task_by_id(self, task_id: str) -> Task | None:
         with self._lock:
             for t in self._tasks:
                 if t["id"] == task_id:
@@ -98,10 +109,11 @@ class TaskManager:
         with self._lock:
             self._tasks.append(task)
         self._schedule_save()
-        logger.info("Task added: %s (id=%s)", text, task["id"])
+        # Only the id: task text is user content and stays out of the logs.
+        logger.info("Task added: id=%s", task["id"])
         return dict(task)
 
-    def delete_task(self, task_id: str) -> Optional[Task]:
+    def delete_task(self, task_id: str) -> Task | None:
         with self._lock:
             idx = self._index_of_unlocked(task_id)
             if idx is None:
@@ -112,7 +124,7 @@ class TaskManager:
         logger.info("Task deleted: %s", task_id)
         return removed
 
-    def toggle_task(self, task_id: str) -> Optional[Task]:
+    def toggle_task(self, task_id: str) -> Task | None:
         with self._lock:
             idx = self._index_of_unlocked(task_id)
             if idx is None:
@@ -165,6 +177,10 @@ class TaskManager:
         Takes a snapshot under the lock, then writes outside it so
         the lock is never held during I/O.
         """
+        if self._saves_blocked:
+            logger.warning("Save skipped: %s could not be read or moved aside", self.tasks_file)
+            return
+
         with self._lock:
             snapshot = copy.deepcopy(self._tasks)
 
@@ -175,6 +191,11 @@ class TaskManager:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     json.dump(snapshot, fh, ensure_ascii=False, indent=2)
+                    # Make sure the bytes are on disk before the rename below,
+                    # so a power loss can't leave a truncated tasks file.
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                self._refresh_backup()
                 os.replace(tmp_path, self.tasks_file)
                 logger.debug("Tasks saved to %s", self.tasks_file)
             except BaseException:
@@ -190,29 +211,115 @@ class TaskManager:
                 # Callback is expected to be thread-safe (e.g. root.after)
                 self.error_callback(msg)
 
+    def _refresh_backup(self) -> None:
+        """Copy the current tasks file to ``backup_file`` before it is replaced."""
+        if not os.path.exists(self.tasks_file):
+            return
+        try:
+            shutil.copy2(self.tasks_file, self.backup_file)
+        except OSError as exc:
+            logger.warning("Could not refresh backup %s: %s", self.backup_file, exc)
+
     def _load_tasks(self) -> None:
         if not os.path.exists(self.tasks_file):
             logger.info("No tasks file at %s — starting fresh", self.tasks_file)
             return
         try:
-            with open(self.tasks_file, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            if not isinstance(data, list):
-                raise TypeError(f"Expected list, got {type(data).__name__}")
-            sanitised = []
-            for item in data:
-                try:
-                    sanitised.append(self._sanitise_task(item))
-                except (TypeError, ValueError) as exc:
-                    logger.warning("Skipping malformed task: %s", exc)
-            self._tasks = sanitised
-            logger.info("Loaded %d task(s) from %s", len(self._tasks), self.tasks_file)
+            tasks, skipped = self._read_tasks_file(self.tasks_file)
         except Exception as exc:
-            msg = f"Error loading tasks: {exc}"
-            logger.error(msg, exc_info=True)
-            if self.error_callback:
-                self.error_callback(msg)
-            self._tasks = []
+            logger.error("Error loading tasks from %s", self.tasks_file, exc_info=True)
+            self._recover_from_unreadable_file(exc)
+            return
+
+        self._tasks = tasks
+        logger.info("Loaded %d task(s) from %s", len(tasks), self.tasks_file)
+        if skipped:
+            kept = self._preserve_original(move=False)
+            where = f" The original file was kept at {kept}." if kept else ""
+            self._report(f"{skipped} malformed task(s) in {self.tasks_file} were skipped.{where}")
+
+    def _read_tasks_file(self, path: str) -> tuple[list[Task], int]:
+        """Parse *path*; return the sanitised tasks and how many entries were skipped.
+
+        Raises if the file is not valid JSON or its root is not a list.
+        """
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if not isinstance(data, list):
+            raise TypeError(f"Expected list, got {type(data).__name__}")
+        sanitised: list[Task] = []
+        skipped = 0
+        for item in data:
+            try:
+                sanitised.append(self._sanitise_task(item))
+            except (TypeError, ValueError) as exc:
+                skipped += 1
+                logger.warning("Skipping malformed task: %s", exc)
+        return sanitised, skipped
+
+    def _recover_from_unreadable_file(self, exc: Exception) -> None:
+        """Never let the next save overwrite a file we failed to read.
+
+        The unreadable file is moved aside; if a valid backup exists it is
+        restored, otherwise the app starts empty. If the file can't be moved,
+        saving is disabled for this session.
+        """
+        self._tasks = []
+        moved = self._preserve_original(move=True)
+        if moved is None:
+            self._saves_blocked = True
+            self._report(
+                f"Could not read {self.tasks_file} ({exc}). Saving is disabled so the file "
+                "is not overwritten — fix or remove it, then restart Fly Notes."
+            )
+            return
+
+        if os.path.exists(self.backup_file):
+            try:
+                tasks, _ = self._read_tasks_file(self.backup_file)
+            except Exception:
+                logger.warning("Backup %s is unreadable too", self.backup_file, exc_info=True)
+            else:
+                self._tasks = tasks
+                self._do_save()
+                self._report(
+                    f"{self.tasks_file} could not be read ({exc}) and was moved to {moved}. "
+                    f"Restored {len(tasks)} task(s) from the last backup."
+                )
+                return
+
+        self._report(
+            f"{self.tasks_file} could not be read ({exc}) and was moved to {moved}. "
+            "Starting with an empty list."
+        )
+
+    def _preserve_original(self, *, move: bool) -> str | None:
+        """Move or copy the tasks file to ``<name>.corrupt-<timestamp>.json``.
+
+        Returns the new path, or ``None`` if the file couldn't be preserved.
+        """
+        base, ext = os.path.splitext(self.tasks_file)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = f"{base}.corrupt-{stamp}{ext}"
+        n = 1
+        while os.path.exists(target):
+            target = f"{base}.corrupt-{stamp}-{n}{ext}"
+            n += 1
+        try:
+            if move:
+                os.replace(self.tasks_file, target)
+            else:
+                shutil.copy2(self.tasks_file, target)
+        except OSError:
+            logger.error("Could not preserve %s as %s", self.tasks_file, target, exc_info=True)
+            return None
+        logger.warning("Preserved original tasks file as %s", target)
+        return target
+
+    def _report(self, message: str) -> None:
+        logger.error(message)
+        if self.error_callback:
+            self.error_callback(message)
 
     @staticmethod
     def _sanitise_task(raw: Any) -> Task:
@@ -240,7 +347,7 @@ class TaskManager:
 
     # ── Internal helpers ─────────────────────
 
-    def _index_of_unlocked(self, task_id: str) -> Optional[int]:
+    def _index_of_unlocked(self, task_id: str) -> int | None:
         """Find index of *task_id* WITHOUT acquiring the lock.
 
         Must be called while ``self._lock`` is already held.
