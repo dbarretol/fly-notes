@@ -57,7 +57,7 @@ markers = ["gui: needs a Tk display (added automatically to tests that use the r
 filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
 
 [tool.pyright]
-include = ["fly_notes", "tests"]
+include = ["fly_notes", "scripts", "tests"]
 pythonVersion = "3.12"
 pythonPlatform = "Windows"
 typeCheckingMode = "standard"
