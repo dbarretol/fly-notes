@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `colors.btn_danger_hover` now colors the delete button while it is pressed, and
   `colors.checkbox_bg` the inside of an unticked checkbox. Both were defined but never used;
   their defaults keep the current look. ([#18])
+- Tests are split by module (`test_app.py`, `test_task_item.py`, `test_task_list.py`, ...),
+  share their Tk fixtures through `tests/conftest.py`, and the ones that need a display are
+  marked `gui`. `TaskItem` keeps its child widgets private and offers `bind_scroll()`, which
+  also makes the mouse wheel work over the padding around a task's text. ([#22])
 
 ### Fixed
 
@@ -158,3 +162,4 @@ completed tasks, configurable theme and taskbar-friendly minimize/restore.
 [#19]: https://github.com/dbarretol/fly-notes/issues/19
 [#20]: https://github.com/dbarretol/fly-notes/issues/20
 [#21]: https://github.com/dbarretol/fly-notes/issues/21
+[#22]: https://github.com/dbarretol/fly-notes/issues/22

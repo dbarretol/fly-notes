@@ -50,6 +50,7 @@ select = ["E", "F", "W", "I", "UP", "B", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["gui: needs a Tk display (added automatically to tests that use the root fixture)"]
 # An exception swallowed in a __del__ or thread (e.g. Tk objects freed off the main
 # thread) fails the run instead of scrolling past as a warning.
 filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
