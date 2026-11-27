@@ -11,12 +11,17 @@ import logging
 import sys
 import tkinter as tk
 
+from fly_notes import __version__
+from fly_notes.config import load_config
+from fly_notes.platform.single_instance import SingleInstance, instance_key
+from fly_notes.ui.app import FlyNotesApp
+
 
 def _configure_platform() -> None:
     """Platform-specific setup. MUST run before any Tk window is created."""
     if sys.platform == "win32":
         try:
-            import ctypes
+            import ctypes  # noqa: PLC0415 -- Windows-only, inside the guard
 
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (ImportError, AttributeError, OSError):
@@ -38,12 +43,6 @@ def main() -> None:
     _configure_platform()
     log = logging.getLogger(__name__)
 
-    # Imported only now so that DPI awareness (above) is set before the UI
-    # loads, and logging is configured before the config file is read.
-    from fly_notes import __version__
-    from fly_notes.config import load_config
-    from fly_notes.platform.single_instance import SingleInstance, instance_key
-
     cfg = load_config()
 
     # One instance per tasks file: a second launch brings the first to the front.
@@ -58,8 +57,6 @@ def main() -> None:
 
     root = tk.Tk()
     root.withdraw()
-
-    from fly_notes.ui.app import FlyNotesApp
 
     log.info("Fly Notes %s starting", __version__)
     app = FlyNotesApp(root, cfg)
