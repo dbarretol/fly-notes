@@ -41,6 +41,22 @@ logger = logging.getLogger(__name__)
 _ACTIVATION_POLL_MS = 300
 
 
+class TkScheduler:
+    """``Scheduler`` for ``TaskManager`` backed by ``after()`` on a Tk widget."""
+
+    def __init__(self, widget: tk.Misc) -> None:
+        self._widget = widget
+
+    def schedule(self, delay_ms: int, callback: Callable[[], None]) -> str:
+        return self._widget.after(delay_ms, callback)
+
+    def cancel(self, handle: object) -> None:
+        try:
+            self._widget.after_cancel(str(handle))
+        except tk.TclError:
+            pass  # The window is already gone (e.g. the atexit flush after closing).
+
+
 class FlyNotesApp:
     """Top-level controller for the Fly Notes application."""
 
@@ -56,7 +72,8 @@ class FlyNotesApp:
         # Data
         self.manager = TaskManager(
             tasks_file=config.tasks_file,
-            error_callback=self._handle_error_threadsafe,
+            error_callback=self._show_error_later,
+            scheduler=TkScheduler(self.root),
         )
 
         # Window geometry: last session's size/position, if still on a monitor
@@ -426,8 +443,12 @@ class FlyNotesApp:
     def _on_window_resize(self, new_width: int) -> None:
         self._task_list.update_canvas_width(new_width)
 
-    def _handle_error_threadsafe(self, message: str) -> None:
-        """Schedule error dialog on the main Tkinter thread."""
+    def _show_error_later(self, message: str) -> None:
+        """Show an error dialog once the event loop is idle.
+
+        Deferred so a load error reported while the window is still being
+        built (before ``mainloop``) doesn't open a dialog mid-construction.
+        """
         self.root.after(0, lambda: messagebox.showerror(config.string("app_title"), message))
 
     def _restored_geometry(self) -> WindowGeometry:

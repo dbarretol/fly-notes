@@ -24,10 +24,8 @@ _MIN_WRAP_WIDTH = 60
 class _BoolValue:
     """``get()``/``set()`` holder with the same interface as ``tk.BooleanVar``.
 
-    No widget is bound to the completed flag, so a Tcl variable isn't needed;
-    a ``BooleanVar`` also breaks when it is garbage-collected off the main
-    thread (e.g. during the save timer), which logs "main thread is not in
-    main loop" from its ``__del__``.
+    No widget is bound to the completed flag, so a Tcl variable isn't needed,
+    and a plain attribute avoids tying each row's state to the Tcl interpreter.
     """
 
     __slots__ = ("_value",)
