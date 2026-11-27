@@ -50,3 +50,6 @@ select = ["E", "F", "W", "I", "UP", "B", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+# An exception swallowed in a __del__ or thread (e.g. Tk objects freed off the main
+# thread) fails the run instead of scrolling past as a warning.
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
