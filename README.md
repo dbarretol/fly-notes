@@ -1,146 +1,160 @@
 # Fly Notes
 
-A minimal, floating "widget-style" task manager built with Python + Tkinter.
-Optimized for Windows 11: stays on top, fades when unfocused, and supports
-reliable minimize/restore using a taskbar proxy window.
+[![CI](https://github.com/dbarretol/fly-notes/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dbarretol/fly-notes/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/dbarretol/fly-notes)](https://github.com/dbarretol/fly-notes/releases/latest)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows%2011-0078D6)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Features
+**A small floating to-do list for Windows that stays out of your way.**
 
-- **Floating & borderless widget**, always on top by default; the header pin (`▲`/`△`) or
-  `Ctrl+T` turns that off and on, and the choice is remembered
-- **Dynamic transparency** — opaque when focused, translucent shortly after it loses focus
-- **Task management**
-  - Add tasks quickly (**type + Enter**); long tasks wrap onto several lines
-  - Mark complete (**checkbox + strikethrough**)
-  - **Drag-and-drop reorder** (drag the task label)
-  - **Fully keyboard-driven**: `Tab` or `↓` from the new-task field moves into the list;
-    see [Keyboard Shortcuts](#keyboard-shortcuts)
-  - **Edit in place**: double-click a task (or hover it and press `F2`); `Enter` saves,
-    `Esc` cancels
-  - Delete tasks individually
-  - **Clear completed** tasks
-  - **Undo** a deletion or a clear (footer "Undo" link for a few seconds, or `Ctrl+Z`):
-    tasks come back at their original position
-  - Automatic grouping into "To Do" / "Completed" sections, with a
-    configurable cap on how many rows render at once (`settings.max_visible_tasks`);
-    a **"Show N more"** link under the list reveals the rest, one page at a time
-- **Header-only movement**: drag the header bar to move the window
-- **8-direction manual resizing**: drag any edge or corner
-- **Remembers its size and position** between sessions (and falls back to the default
-  spot if that position is no longer on any connected monitor)
-- **Reliable minimize/restore on Windows 11**, via a **Taskbar Proxy Window** strategy
-- **Single instance**: launching Fly Notes again while it runs brings the open window to the
-  front (restoring it if minimized) instead of starting a second copy that would overwrite
-  the same `tasks.json`. Copies that use different tasks files can still run side by side
-- **Debounced, atomic persistence** to a local `tasks.json` (survives crashes mid-write)
-  - The previous version is kept as `tasks.json.bak`. If `tasks.json` ever becomes
-    unreadable, it is moved aside as `tasks.corrupt-<timestamp>.json` (never overwritten)
-    and the backup is restored automatically.
-- **Fully configurable** — colors, spacing, fonts, shortcuts and behavior via `config.json`
-
-## Screens / Demo
+Fly Notes is a borderless task widget that sits on top of your other windows. It fades when you
+are working elsewhere and keeps your list in a plain local JSON file, with no account, no cloud
+and no telemetry. It is written in Python with Tkinter, with no third-party runtime
+dependencies, and ships as a single `.exe`.
 
 <p align="center">
   <img src="docs/images/fly-notes.png" width="330"
        alt="Fly Notes window: a header with the always-on-top pin, the new-task field, a To Do section with four tasks (one wrapping onto two lines), a Completed section with two struck-through tasks, and a footer reading '2 of 6 done' with a 'Clear completed (2)' link">
 </p>
 
-## Keyboard Shortcuts
+## Contents
 
-| Key | Action |
-|---|---|
-| `Ctrl+N` | Focus the new-task field |
-| `Enter` | Add the typed task |
-| `Esc` | Clear the new-task field (never closes the app) |
-| `F2` / double-click | Edit the task under the pointer (`Enter` saves, `Esc` cancels) |
-| `Ctrl+D` | Clear completed tasks |
-| `Ctrl+Z` | Undo the last deletion or clear (repeat to go further back) |
-| `Ctrl+T` | Toggle always on top (same as the header pin) |
-| `Ctrl+W` | Close Fly Notes |
+- [Features](#features)
+- [Getting started](#getting-started)
+- [Using Fly Notes](#using-fly-notes)
+- [Configuration](#configuration)
+- [Where your data lives](#where-your-data-lives)
+- [How it works](#how-it-works)
+- [Development](#development)
+- [Platform notes and limitations](#platform-notes-and-limitations)
+- [Roadmap and changelog](#roadmap-and-changelog)
+- [License](#license)
 
-On a focused task row (highlighted with a focus ring):
+## Features
 
-| Key | Action |
-|---|---|
-| `↑` / `↓` | Move to the previous / next task (`↑` on the first row returns to the new-task field) |
-| `Space` | Mark complete / not complete |
-| `Delete` | Delete the task (undo with `Ctrl+Z`) |
-| `Alt+↑` / `Alt+↓` | Move the task up / down within its group |
-| `F2` / `Enter` | Edit the task |
+**A window that floats, not one that gets in the way**
 
-`↓` in the new-task field jumps to the first task. The window-level shortcuts above
-can be changed in the `shortcuts` section of `config.json`, using Tk event
-syntax (e.g. `"close": "<Control-q>"`).
+- Borderless widget that stays **always on top** by default. The header pin (`▲`/`△`) or
+  `Ctrl+T` turns this off and on, and the choice is remembered.
+- **Fades** to a translucent state shortly after it loses focus, and comes back fully opaque
+  when you return.
+- Move it by dragging the header, and **resize it from any edge or corner**.
+- **Remembers its size and position** between sessions. If that spot is no longer on a
+  connected monitor (say, after undocking a laptop), it opens at the default position.
+- Minimizes to and restores from the **Windows taskbar**, even though the window has no
+  native frame.
+- **Single instance**: launching it again brings the open window to the front instead of
+  starting a second copy that would overwrite the same tasks.
 
-## Requirements
+**Tasks**
 
-- **Windows 11** (primary supported experience — see [Platform Notes](#platform-notes--limitations))
-- **Python 3.12+**
-- Tkinter (bundled with the standard Python installer on Windows)
-- [uv](https://docs.astral.sh/uv/) (recommended for dependency/venv management — see `docs/AGENTS.md`)
+- Type and press `Enter` to add a task. Long tasks wrap onto several lines.
+- Tick the checkbox to complete a task. Completed tasks move to their own **Completed**
+  section, struck through.
+- **Edit in place** by double-clicking a task (or pressing `F2`).
+- **Reorder** by dragging a task, or with `Alt+↑` / `Alt+↓`.
+- Delete one task, or **clear all completed** ones at once. Both can be **undone**, from the
+  footer's "Undo" link or with `Ctrl+Z`, and tasks come back at their original position.
+- Very long lists render a page at a time, with a **"Show N more"** link.
+- **Fully usable from the keyboard** (see [Keyboard shortcuts](#keyboard-shortcuts)).
 
-## Quick Start
+**Your data is safe and yours**
 
-### Option A: Run the prebuilt executable
+- Saved automatically to a local `tasks.json`. Writes are atomic, so a crash or power cut
+  mid-save can't leave a half-written file.
+- The previous version is kept as `tasks.json.bak`. A file that can't be read is set aside,
+  never overwritten, and the backup is restored automatically.
 
-Download `FlyNotes.exe` from the [latest release](https://github.com/dbarretol/fly-notes/releases/latest)
-(or build it yourself, see [Build the .exe](#build-the-exe-pyinstaller)) and run it directly — no
-installation required.
+**Configurable**
 
-### Option B: Run from source (uv)
+- Colors, transparency, spacing, fonts, shortcuts, behavior and every UI string can be
+  overridden with an optional `config.json`.
+
+## Getting started
+
+### Option A: download the executable (no Python needed)
+
+1. Download `FlyNotes.exe` from the
+   [latest release](https://github.com/dbarretol/fly-notes/releases/latest).
+2. Run it. There is nothing to install.
+
+> [!NOTE]
+> The executable is not code-signed, so Windows SmartScreen may show a warning the first time.
+> Choose **More info → Run anyway**, or run from source (option B) or
+> [build the `.exe` yourself](#building-the-exe).
+
+### Option B: run from source
+
+Requires **Windows 11**, **Python 3.12+** (Tkinter is included in the standard Windows
+installer) and, ideally, [uv](https://docs.astral.sh/uv/).
 
 ```powershell
+git clone https://github.com/dbarretol/fly-notes.git
+cd fly-notes
 uv sync
-uv run main.py
+uv run fly-notes          # or: uv run main.py
 ```
 
-### Option B (alternative): Run from source (pip)
+Without uv:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
-fly-notes            # or: python -m fly_notes
+fly-notes                 # or: python -m fly_notes
 ```
 
-## Project Structure
+## Using Fly Notes
 
-```
-FLY_NOTES/
-├── main.py                    # Thin launcher (also the PyInstaller entry script)
-├── fly_notes/
-│   ├── __main__.py            # Bootstrap: platform setup, logging, Tk root, mainloop
-│   ├── config.py              # DEFAULT_CONFIG, validation, config.json loading/merging
-│   ├── paths.py               # Where config/data live (source, installed .exe, portable .exe)
-│   ├── task_manager.py        # Task CRUD + debounced atomic JSON persistence (no Tkinter)
-│   ├── task_item.py           # TaskItem row widget + custom checkbox
-│   ├── window_controller.py   # Borderless drag/resize + taskbar proxy (Windows-only bits)
-│   ├── window_state.py        # Remembered window geometry + monitor checks (state.json)
-│   ├── single_instance.py     # One running copy per tasks file (Windows named mutex)
-│   └── fly_notes_app.py       # Main app orchestrator: header/entry/list/footer wiring
-├── tests/                     # pytest suite (task manager, config, paths, window state, single instance, UI)
-├── docs/                      # Contributor notes (AGENTS.md) and README images
-├── .github/                   # CI workflow (ruff + pytest on Windows) and PR template
-├── config.json                # Optional — your local overrides (not tracked; see below)
-├── tasks.json                 # Your task data when running from source (not tracked)
-├── FlyNotes.spec              # PyInstaller build spec
-├── CHANGELOG.md
-├── LICENSE
-└── pyproject.toml
-```
+| To… | Do this |
+|---|---|
+| Add a task | Type in the top field and press `Enter` |
+| Complete / reopen a task | Click its checkbox (or focus it and press `Space`) |
+| Edit a task | Double-click its text, or hover it and press `F2`. `Enter` saves, `Esc` cancels |
+| Reorder | Drag the task's text, or focus it and press `Alt+↑` / `Alt+↓` |
+| Delete a task | Hover it and click its delete button, or focus it and press `Delete` |
+| Undo a delete or clear | Click **Undo** in the footer within a few seconds, or press `Ctrl+Z` later |
+| Move / resize the window | Drag the header / drag any edge or corner |
+| Keep it on top or not | Click the header pin (`▲` on top, `△` normal) or press `Ctrl+T` |
+| Minimize / close | Use the `—` / `✕` buttons in the header (`Ctrl+W` closes) |
+
+### Keyboard shortcuts
+
+Anywhere in the window:
+
+| Key | Action |
+|---|---|
+| `Ctrl+N` | Focus the new-task field |
+| `Enter` | Add the typed task |
+| `Esc` | Clear the new-task field (it never closes the app) |
+| `F2` | Edit the task under the pointer, or the focused one |
+| `Ctrl+D` | Clear completed tasks |
+| `Ctrl+Z` | Undo the last deletion or clear (repeat to go further back) |
+| `Ctrl+T` | Toggle always on top |
+| `Ctrl+W` | Close Fly Notes |
+
+On a focused task (reach the list with `Tab`, or `↓` from the new-task field; the focused
+task shows a highlighted border):
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Previous / next task (`↑` on the first task returns to the new-task field) |
+| `Space` | Mark complete / not complete |
+| `Delete` | Delete the task (undo with `Ctrl+Z`) |
+| `Alt+↑` / `Alt+↓` | Move the task up / down within its section |
+| `F2` / `Enter` | Edit the task |
+
+The window-wide shortcuts can be changed in the `shortcuts` section of `config.json`, using
+Tk event syntax (for example `"close": "<Control-q>"`).
 
 ## Configuration
 
-Fly Notes ships with sensible defaults (`fly_notes/config.py: DEFAULT_CONFIG`) covering
-colors, spacing, fonts, window size/behavior, keyboard shortcuts and UI strings.
+Fly Notes works out of the box. To customize it, create a `config.json` in the
+[data folder](#where-your-data-lives) containing **only the keys you want to change**.
+Everything else keeps its default.
 
-To customize anything, create a `config.json` file in the [data folder](#where-your-data-lives).
-You only need to include the keys you want to override — everything else falls back to
-the default. Unknown keys are ignored (with a warning logged), and invalid values
-(e.g. a malformed hex color) cause the whole file to be rejected in favor of defaults,
-so a typo can never crash the app.
-
-Example — change the accent color and default window size:
+Example: a green header and a larger default window.
 
 ```json
 {
@@ -150,113 +164,205 @@ Example — change the accent color and default window size:
   },
   "settings": {
     "default_width": 360,
-    "default_height": 520,
-    "max_visible_tasks": 50
+    "default_height": 520
   }
 }
 ```
 
-Available top-level sections: `colors`, `transparency`, `spacing`, `settings`, `fonts`,
-`shortcuts`, `strings`. See `fly_notes/config.py` for the full list of keys and their
-defaults.
+| Section | What it controls | Examples of keys |
+|---|---|---|
+| `colors` | Every color in the UI | `header_bg`, `content_bg`, `border_focus`, `link_color` |
+| `transparency` | Window opacity, `0.0`–`1.0` | `active` (focused, default `1.0`), `inactive` (default `0.75`) |
+| `settings` | Sizes and behavior | `default_width`, `always_on_top`, `max_visible_tasks`, `undo_timeout_ms`, `group_completed`, `tasks_file` |
+| `spacing` | Paddings and gaps | `sm`, `md`, `lg` |
+| `fonts` | `[family, size, style…]` per text role | `body`, `header`, `section` |
+| `shortcuts` | Window-wide key bindings (Tk syntax) | `new_task`, `undo`, `toggle_always_on_top`, `close` |
+| `strings` | Every UI text, for rewording or translating | `entry_placeholder`, `empty_state`, `undo_action` |
 
-### Where your data lives
+The full list of keys and their defaults is `DEFAULT_CONFIG` in
+[`fly_notes/config.py`](fly_notes/config.py).
 
-| How you run Fly Notes | Location of `config.json`, `tasks.json` (+ `.bak`) and `state.json` |
-|---|---|
-| From source (`uv run main.py`) | Project root, next to `main.py` |
-| `FlyNotes.exe` | `%APPDATA%\FlyNotes\` (created on first save) |
-| `FlyNotes.exe`, portable | The executable's folder — used whenever a `config.json` or `tasks.json` already sits next to `FlyNotes.exe` |
+A mistake can't break the app:
 
-The window's last size and position, and whether it stays on top, are kept in
-`state.json`, next to `tasks.json`. Deleting it resets the window to the default size and
-position and to `settings.always_on_top`.
+- Unknown keys are ignored, and a warning is logged.
+- An invalid value, such as a malformed color, makes Fly Notes ignore the whole file and use
+  the defaults.
+- A color pair with poor contrast (below the WCAG ratio) only logs a warning.
 
-`settings.tasks_file` overrides the tasks file location. A relative path is resolved
-against the data folder above; an absolute path (environment variables such as
-`%USERPROFILE%` are expanded) is used as-is.
+## Where your data lives
+
+All files sit together in one data folder:
+
+- `tasks.json`: your tasks.
+- `tasks.json.bak`: the previous save.
+- `state.json`: window size, position and the always-on-top choice.
+- `config.json`: optional, your overrides.
+
+```mermaid
+flowchart TD
+    start([Fly Notes starts]) --> frozen{Running the packaged .exe?}
+    frozen -- "No (from source)" --> src["Project folder, next to main.py"]
+    frozen -- Yes --> portable{"config.json or tasks.json<br/>next to FlyNotes.exe?"}
+    portable -- "Yes (portable mode)" --> exe["The .exe's own folder"]
+    portable -- No --> appdata["%APPDATA%\FlyNotes"]
+```
+
+- **Portable use** (for example from a USB stick or a synced folder): put a `tasks.json`
+  containing `[]` next to `FlyNotes.exe`.
+- **Custom tasks file**: `settings.tasks_file` points the tasks file elsewhere. A relative
+  path is taken from the data folder, and environment variables such as `%USERPROFILE%` are
+  expanded. `state.json` and the backup follow the tasks file.
+- **Reset the window**: delete `state.json` to return to the default size, position and
+  always-on-top setting.
+
+## How it works
+
+### Architecture
+
+```mermaid
+flowchart TD
+    main["__main__.py<br/>startup: DPI, logging, single-instance check"]
+    single["single_instance.py<br/>one copy per tasks file"]
+    app["fly_notes_app.py<br/>FlyNotesApp: header, entry, list, footer"]
+    item["task_item.py<br/>TaskItem: one task row"]
+    win["window_controller.py<br/>drag, resize, taskbar proxy"]
+    state["window_state.py<br/>state.json, monitor checks"]
+    manager["task_manager.py<br/>tasks, undo, saving"]
+    config["config.py<br/>defaults + config.json"]
+    paths["paths.py<br/>data folder"]
+
+    main --> single
+    main --> app
+    app --> item
+    app --> win
+    app --> state
+    app --> manager
+    app --> config
+    item --> config
+    win --> config
+    config --> paths
+```
+
+- `FlyNotesApp` owns the UI and connects it to `TaskManager`, which holds the task list.
+- `task_manager.py`, `window_state.py`, `single_instance.py` and `paths.py` don't use
+  Tkinter, so they can be tested without a window.
+
+### Saving and recovery
+
+Every change schedules a save half a second later, so a burst of edits becomes one write.
+Closing the app saves immediately.
+
+```mermaid
+flowchart LR
+    change([Any change]) --> wait["Wait 0.5 s<br/>(later changes restart the wait)"]
+    wait --> tmp["Write to a temp file<br/>and flush it to disk"]
+    tmp --> bak["Copy the current tasks.json<br/>to tasks.json.bak"]
+    bak --> swap["Atomically replace tasks.json<br/>with the temp file"]
+```
+
+On startup, a `tasks.json` that can't be read is never overwritten:
+
+```mermaid
+flowchart TD
+    load([Load tasks.json]) --> ok{Readable?}
+    ok -- Yes --> run([Start])
+    ok -- No --> aside["Move it aside as<br/>tasks.corrupt-(timestamp).json"]
+    aside --> backup{Readable tasks.json.bak?}
+    backup -- Yes --> restore["Restore the backup<br/>and say so"] --> run
+    backup -- No --> empty["Start with an empty list<br/>and say so"] --> run
+```
+
+Individual malformed tasks are skipped, and a copy of the original file is kept. If the
+unreadable file can't even be moved aside, saving is turned off for that session, so nothing
+can overwrite it.
+
+### Borderless window on Windows
+
+The window is drawn without the native frame (Tk's `overrideredirect`). On Windows, that also
+removes it from the taskbar. Fly Notes therefore keeps a hidden, normal "proxy" window that
+holds the taskbar button:
+
+- **Minimize** hides the main window and minimizes the proxy.
+- **Clicking the taskbar button** restores the proxy, which brings the main window back.
 
 ## Development
 
-Install dev dependencies (pytest, pytest-cov, ruff, pyinstaller):
-
 ```powershell
-uv sync --extra dev
+uv sync --extra dev                  # pytest, pytest-cov, ruff, pyinstaller
+uv run pytest                        # test suite
+uv run pytest --cov=fly_notes --cov-report=term-missing
+uv run ruff check .                  # lint
+uv run ruff format .                 # format
 ```
 
-Run the test suite:
+Project layout:
 
-```powershell
-uv run pytest tests/ -v
+```
+fly-notes/
+├── main.py                    # Thin launcher (also the PyInstaller entry script)
+├── fly_notes/
+│   ├── __main__.py            # Startup: DPI awareness, logging, single-instance check, Tk root
+│   ├── fly_notes_app.py       # Main window: header, entry, task list, footer
+│   ├── task_item.py           # One task row + custom checkbox
+│   ├── task_manager.py        # Tasks, undo, debounced atomic saving (no Tkinter)
+│   ├── window_controller.py   # Borderless drag/resize + taskbar proxy
+│   ├── window_state.py        # state.json: geometry, always on top, monitor checks
+│   ├── single_instance.py     # One running copy per tasks file (Windows named mutex)
+│   ├── config.py              # Defaults, validation, config.json merging
+│   └── paths.py               # Where the data folder is
+├── tests/                     # pytest suite
+├── assets/                    # Window icon
+├── docs/                      # Contributor notes (AGENTS.md) and README images
+├── .github/                   # CI workflow and pull request template
+├── FlyNotes.spec              # PyInstaller build spec
+├── CHANGELOG.md
+├── LICENSE
+└── pyproject.toml
 ```
 
-With coverage:
+### Branches and pull requests
 
-```powershell
-uv run pytest tests/ --cov=fly_notes --cov-report=term-missing
+```mermaid
+flowchart LR
+    feat["feat/* · fix/* · docs/* · chore/*"] -- "pull request<br/>(CI must pass)" --> dev
+    dev -- "release pull request<br/>+ tag vX.Y.Z" --> main
 ```
 
-Lint and format (configured in `pyproject.toml`):
+- Work happens on short-lived branches, opened as pull requests against `dev`.
+- `main` only receives releases from `dev`.
+- GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs ruff on Ubuntu and the test
+  suite on Windows for every pull request and push to `dev` and `main`.
+- User-visible changes go in the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md).
 
-```powershell
-uv run ruff check .
-uv run ruff format .
-```
-
-### Branches and CI
-
-Work happens on short-lived branches (`feat/*`, `fix/*`, `chore/*`, `docs/*`) opened as pull
-requests against `dev`; `main` only receives stable releases from `dev`. GitHub Actions
-(`.github/workflows/ci.yml`) runs ruff and the test suite on Windows for every pull request
-and push to `dev` and `main`.
-
-## Build the .exe (PyInstaller)
-
-### Using the provided spec (recommended)
+### Building the .exe
 
 ```powershell
 uv run pyinstaller FlyNotes.spec --clean
 ```
 
-### Ad-hoc, without the spec file
+The output is `dist/FlyNotes.exe`, a PyInstaller *onefile* build. It unpacks itself to a
+temporary folder on every launch, which is why it keeps its data in `%APPDATA%\FlyNotes` (or
+next to the `.exe` in portable mode), never in that temporary folder.
 
-```powershell
-uv run pyinstaller --onefile --noconsole --name FlyNotes main.py --clean
-```
+## Platform notes and limitations
 
-Output: `dist/FlyNotes.exe`
+- **Windows only, by design.** The borderless window, the taskbar proxy and the
+  single-instance check all rely on Windows behavior. The `.exe` runs only on Windows.
+- **macOS and Linux are unsupported and untested.** The app starts, with a warning in the log,
+  but:
+  - the window may lose its dock or taskbar entry, with no way to restore it after minimizing;
+  - transparency depends on the window manager;
+  - a second copy is not prevented.
 
-> **Note:** the packaged `.exe` is a PyInstaller *onefile* build that extracts itself to a
-> temporary directory on each launch, so it never stores data there. See
-> [Where your data lives](#where-your-data-lives); to run it portably, put a `tasks.json`
-> containing `[]` (or a `config.json`) next to `FlyNotes.exe`.
+  The task list, dragging and resizing are plain Tk and should still work.
+- Tasks are stored locally only. There is no sync between machines, although a synced folder
+  in [portable mode](#where-your-data-lives) can be used for that.
 
-## Platform Notes / Limitations
+## Roadmap and changelog
 
-- **Windows-only by design.** The borderless window + reliable minimize/restore relies
-  on a **Taskbar Proxy Window** technique (see `fly_notes/window_controller.py`) built
-  specifically around how Windows removes `overrideredirect(True)` windows from the
-  taskbar.
-- The `.exe` built by PyInstaller runs **only on Windows**.
-- Transparency and borderless behavior depend on the OS/window manager.
-- **Running on macOS/Linux is unsupported and untested.** The app still launches (a
-  warning is logged), but expect broken behavior:
-  - `overrideredirect(True)` behaves differently per window manager — the window may
-    lose its taskbar/dock entry entirely, with no equivalent of the Windows taskbar
-    icon to restore it from.
-  - The taskbar-proxy minimize/restore trick assumes Windows taskbar semantics and does
-    not translate to other platforms.
-  - Dragging, resizing, and the task list itself are plain Tk and should still work.
-
-## Tech Stack
-
-- **Python 3.12+**
-- **Tkinter** (built-in GUI toolkit)
-- **PyInstaller** (dev-only: packaging into a single executable)
-- **pytest / pytest-cov** (dev-only: test suite)
-- **ruff** (dev-only: lint and format) and **GitHub Actions** (CI on Windows)
-- **Windows integration**: taskbar proxy technique for consistent minimize/restore on
-  borderless windows
+- Planned work is tracked in [issues](https://github.com/dbarretol/fly-notes/issues) and grouped
+  by [milestone](https://github.com/dbarretol/fly-notes/milestones).
+- Changes in each release are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
