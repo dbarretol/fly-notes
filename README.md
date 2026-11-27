@@ -312,7 +312,8 @@ fly-notes/
 │   └── paths.py               # Where the data folder is
 ├── tests/                     # pytest suite
 ├── assets/                    # Window icon
-├── docs/                      # Contributor notes (AGENTS.md) and README images
+├── docs/images/               # README screenshot
+├── AGENTS.md                  # Notes for coding agents and contributors
 ├── .github/                   # CI workflow and pull request template
 ├── FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
