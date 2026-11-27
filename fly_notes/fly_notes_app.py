@@ -620,6 +620,7 @@ class FlyNotesApp:
         self.window_ctrl = WindowController(
             self.root,
             on_resize_callback=self._on_window_resize,
+            on_close=self._on_close,
         )
 
         # Drag state

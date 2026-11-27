@@ -130,10 +130,14 @@ class WindowController:
         self,
         root: tk.Tk,
         on_resize_callback: Callable[[int], None] | None = None,
+        on_close: Callable[[], None] | None = None,
     ) -> None:
         self._warn_if_unsupported_platform()
         self.root = root
         self.on_resize_callback = on_resize_callback
+        # Called when the user closes the app from the taskbar entry. The app
+        # passes its own close handler so pending saves are flushed first.
+        self.on_close = on_close
 
         # Drag state
         self._offset_x: int = 0
@@ -280,8 +284,11 @@ class WindowController:
         self._proxy.withdraw()
 
     def _on_proxy_close(self) -> None:
-        """Handle close from the taskbar proxy — destroy main window."""
-        self.root.destroy()
+        """Handle close from the taskbar proxy (e.g. right-click → Close window)."""
+        if self.on_close is not None:
+            self.on_close()
+        else:
+            self.root.destroy()
 
     def _proxy_restore(self, _event: tk.Event | None = None) -> None:
         """Restore main window when the user clicks the taskbar icon."""
