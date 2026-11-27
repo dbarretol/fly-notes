@@ -310,12 +310,13 @@ holds the taskbar button:
 ## Development
 
 ```powershell
-uv sync --extra dev                  # pytest, pytest-cov, ruff, pyinstaller
+uv sync --extra dev                  # pytest, pytest-cov, ruff, pyright, pyinstaller
 uv run pytest                        # test suite
 uv run pytest -m "not gui"           # only the tests that need no display
 uv run pytest --cov=fly_notes --cov-report=term-missing
 uv run ruff check .                  # lint
 uv run ruff format .                 # format
+uv run pyright                       # type check
 ```
 
 Project layout:
@@ -365,8 +366,8 @@ flowchart LR
 
 - Work happens on short-lived branches, opened as pull requests against `dev`.
 - `main` only receives releases from `dev`.
-- GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs ruff on Ubuntu and the test
-  suite on Windows for every pull request and push to `dev` and `main`.
+- GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs ruff and pyright on Ubuntu and
+  the test suite on Windows for every pull request and push to `dev` and `main`.
 - User-visible changes go in the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md).
 
 ### Building the .exe
