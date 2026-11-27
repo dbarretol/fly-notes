@@ -19,7 +19,8 @@ reliable minimize/restore using a taskbar proxy window.
   - **Undo** a deletion or a clear (footer "Undo" link for a few seconds, or `Ctrl+Z`):
     tasks come back at their original position
   - Automatic grouping into "To Do" / "Completed" sections, with a
-    configurable cap on how many rows render at once
+    configurable cap on how many rows render at once (`settings.max_visible_tasks`);
+    a **"Show N more"** link under the list reveals the rest, one page at a time
 - **Header-only movement**: drag the header bar to move the window
 - **8-direction manual resizing**: drag any edge or corner
 - **Remembers its size and position** between sessions (and falls back to the default
