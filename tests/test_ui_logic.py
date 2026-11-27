@@ -230,12 +230,12 @@ def test_do_reorder_regression_respects_grouping(root, tmp_path):
     for t in (task_a, task_b, task_c):
         w = TaskItem(
             task_list.inner_frame,
-            task_id=t["id"],
-            text=t["text"],
-            completed=t["completed"],
+            task_id=t.id,
+            text=t.text,
+            completed=t.completed,
         )
         task_list.add_widget(w)
-        widgets[t["text"]] = w
+        widgets[t.text] = w
     task_list.repack()
 
     app = FlyNotesApp.__new__(FlyNotesApp)
@@ -247,7 +247,7 @@ def test_do_reorder_regression_respects_grouping(root, tmp_path):
     event = types.SimpleNamespace(y_root=1000 - config.drag_threshold - 1)
     app._do_reorder(widgets["C"], event)
 
-    assert [t["text"] for t in manager.tasks] == ["C", "A", "B"]
+    assert [t.text for t in manager.tasks] == ["C", "A", "B"]
 
     for w in widgets.values():
         w.destroy()
@@ -631,7 +631,7 @@ def _widget_state(app):
 
 
 def _model_state(app):
-    return [(t["id"], t["completed"]) for t in app.manager.tasks]
+    return [(t.id, t.completed) for t in app.manager.tasks]
 
 
 SAMPLE_TASKS = [
@@ -853,7 +853,7 @@ def test_inline_edit_is_saved_to_the_model(app_window, tmp_path, monkeypatch):
         item._editor.insert(0, "A edited")
         item.commit_edit()
 
-        assert app.manager.task_by_id("a")["text"] == "A edited"
+        assert app.manager.task_by_id("a").text == "A edited"
         assert item.label.cget("text") == "A edited"
     finally:
         app._on_close()
@@ -1186,7 +1186,7 @@ def test_space_toggles_the_focused_row(nav_app):
     row = _row(app, "a")
     assert row._key_toggle() == "break"
     assert row.completed_var.get() is True
-    assert app.manager.task_by_id("a")["completed"] is True
+    assert app.manager.task_by_id("a").completed is True
 
 
 def test_delete_key_removes_the_row_moves_focus_and_is_undoable(nav_app):
@@ -1216,17 +1216,17 @@ def test_alt_arrows_reorder_within_the_group_and_keep_model_and_widgets_in_sync(
     assert _row(app, "d")._move(-1) == "break"  # d above c
 
     assert _ids(app._task_list.visual_order()) == ["a", "d", "c", "b"]
-    assert _ids(app._task_list.task_widgets) == [t["id"] for t in app.manager.tasks]
+    assert _ids(app._task_list.task_widgets) == [t.id for t in app.manager.tasks]
     assert _ids(focused) == ["d"]
 
 
 def test_alt_arrows_never_cross_the_group_boundary(nav_app):
     app, _ = nav_app
-    before = [t["id"] for t in app.manager.tasks]
+    before = [t.id for t in app.manager.tasks]
     _row(app, "d")._move(1)  # next visual row is the completed "b"
     _row(app, "b")._move(-1)
     _row(app, "a")._move(-1)  # already first
-    assert [t["id"] for t in app.manager.tasks] == before
+    assert [t.id for t in app.manager.tasks] == before
 
 
 def test_reorder_across_hidden_group_keeps_widget_order_equal_to_model(nav_app):
@@ -1236,7 +1236,7 @@ def test_reorder_across_hidden_group_keeps_widget_order_equal_to_model(nav_app):
     app, _ = nav_app
     _row(app, "c")._move(-1)
 
-    model = [t["id"] for t in app.manager.tasks]
+    model = [t.id for t in app.manager.tasks]
     assert _ids(app._task_list.task_widgets) == model
 
     # Deleting and undoing still restores the exact same order.
@@ -1290,9 +1290,7 @@ def test_section_headers_are_uppercase_bold_and_use_dedicated_color(root, tmp_pa
     task_list = TaskListView(root)
     widgets = []
     for t in (task_a, task_b):
-        w = TaskItem(
-            task_list.inner_frame, task_id=t["id"], text=t["text"], completed=t["completed"]
-        )
+        w = TaskItem(task_list.inner_frame, task_id=t.id, text=t.text, completed=t.completed)
         task_list.add_widget(w)
         widgets.append(w)
     task_list.repack()
