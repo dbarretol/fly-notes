@@ -288,7 +288,10 @@ def _is_color(value: Any) -> bool:
 
 def _validate_colors(colors: dict[str, str]) -> None:
     for key, val in colors.items():
-        if not _is_color(val):
+        digits = val.lstrip("#") if isinstance(val, str) else ""
+        # Tk accepts #RGB and #RRGGBB only. The alpha in #RRGGBBAA is blended in
+        # Python for shadow_color, but no other colour key can use that form.
+        if not _is_color(val) or (len(digits) == 8 and key != "shadow_color"):
             raise ValueError(f"colors.{key}: '{val}' is not a valid hex colour")
 
 
