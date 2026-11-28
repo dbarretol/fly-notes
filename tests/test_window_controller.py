@@ -95,3 +95,24 @@ def test_proxy_close_delegates_to_on_close_callback(root, cfg):
     finally:
         root.withdraw()
         ctrl._proxy.destroy()
+
+
+def test_resize_grips_use_header_color_along_the_header(root, cfg):
+    """The top and upper side grips must not frame the header in content_bg (#98)."""
+    ctrl = WindowController(root, cfg)
+    try:
+        ctrl.setup_resize_handles(
+            cfg.colors.content_bg,
+            header_color=cfg.colors.header_bg,
+            header_height=cfg.settings.header_height,
+        )
+        colors = [str(grip.cget("bg")).lower() for grip in ctrl._grip_widgets]
+        header = cfg.colors.header_bg.lower()
+        # n, ne, nw plus the two overlaid upper side portions
+        assert colors.count(header) == 5
+        assert cfg.colors.content_bg.lower() in colors
+        assert len(ctrl._grip_widgets) == 10
+        assert all(grip.bind("<Button-1>") for grip in ctrl._grip_widgets)
+    finally:
+        root.withdraw()
+        ctrl._proxy.destroy()

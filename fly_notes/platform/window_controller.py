@@ -200,8 +200,16 @@ class WindowController:
 
     # ── 8-direction resizing ─────────────────
 
-    def setup_resize_handles(self, bg_color: str) -> None:
-        """Create invisible grip frames around the window edges."""
+    def setup_resize_handles(
+        self, bg_color: str, header_color: str | None = None, header_height: int = 0
+    ) -> None:
+        """Create invisible grip frames around the window edges.
+
+        Since #77 the header has its own colour: grips along the top edge must
+        use it too, otherwise a lighter frame appears around the header. When a
+        header colour and height are given, the top part of the side grips is
+        overlaid with the header colour as well.
+        """
         # Destroy old grips if re-called
         for grip in self._grip_widgets:
             try:
@@ -221,13 +229,25 @@ class WindowController:
             ("se", dict(relx=1.0, x=-g, rely=1.0, y=-g, width=g, height=g)),
             ("sw", dict(x=0, rely=1.0, y=-g, width=g, height=g)),
         ]
-        for edge, place_kw in specs:
-            grip = tk.Frame(self.root, bg=bg_color, cursor=_CURSOR_MAP[edge])
+        def add_grip(edge: str, place_kw: dict[str, object], color: str) -> None:
+            grip = tk.Frame(self.root, bg=color, cursor=_CURSOR_MAP[edge])
             grip.place(**place_kw)
             grip.bind("<Button-1>", lambda e, ed=edge: self._start_resize(ed, e))
             grip.bind("<B1-Motion>", self._do_resize)
             grip.bind("<ButtonRelease-1>", self._stop_resize)
             self._grip_widgets.append(grip)
+
+        for edge, place_kw in specs:
+            top = edge in {"n", "ne", "nw"}
+            add_grip(edge, place_kw, header_color if top and header_color else bg_color)
+
+        if header_color and header_height > 0:
+            # Overlay the header-coloured portion of the left and right grips.
+            for edge, place_kw in (
+                ("w", dict(x=0, y=0, width=g, height=header_height)),
+                ("e", dict(relx=1.0, x=-g, y=0, width=g, height=header_height)),
+            ):
+                add_grip(edge, place_kw, header_color)
 
     def _start_resize(self, edge: str, event: tk.Event) -> None:
         self._is_resizing = True
