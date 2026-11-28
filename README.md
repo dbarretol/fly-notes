@@ -404,7 +404,7 @@ fly-notes/
 ├── .github/                   # CI and release workflows, Dependabot, PR template
 ├── scripts/release_notes.py   # Release notes from CHANGELOG.md (used by the release workflow)
 ├── scripts/make_icon.ps1      # Draws assets/fly_notes.ico (16–256 px)
-├── FlyNotes.spec              # PyInstaller build spec
+├── packaging/FlyNotes.spec              # PyInstaller build spec
 ├── CHANGELOG.md
 ├── LICENSE
 └── pyproject.toml
@@ -431,7 +431,7 @@ flowchart LR
 ### Building the .exe
 
 ```powershell
-uv run pyinstaller FlyNotes.spec --clean
+uv run pyinstaller packaging/FlyNotes.spec --clean
 ```
 
 The output is `dist/FlyNotes.exe`, a PyInstaller *onefile* build. It unpacks itself to a

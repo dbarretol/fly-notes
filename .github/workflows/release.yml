@@ -44,7 +44,7 @@ jobs:
         run: uv run pytest
 
       - name: Build
-        run: uv run pyinstaller FlyNotes.spec --clean --noconfirm
+        run: uv run pyinstaller packaging/FlyNotes.spec --clean --noconfirm
 
       - name: Checksum and notes
         run: |

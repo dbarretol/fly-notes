@@ -11,7 +11,7 @@ runtime dependencies.
 - Type check: `uv run pyright` (checks `fly_notes/` and `tests/` as Windows code)
 - Tests: `uv run pytest` (`-m "not gui"` skips the ones that open Tk windows). One test file per
   module; shared fixtures (`cfg`, `root`, `app_window`) live in `tests/conftest.py`.
-- Build the executable: `uv run pyinstaller FlyNotes.spec --clean`
+- Build the executable: `uv run pyinstaller packaging/FlyNotes.spec --clean`
 - Regenerate the app icon (`assets/fly_notes.ico`): `powershell -NoProfile -File scripts/make_icon.ps1`
 
 ## Conventions

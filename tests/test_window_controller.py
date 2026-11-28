@@ -50,7 +50,7 @@ def test_resize_callback_receives_width_without_stale_reread(root, cfg):
 
 def test_icon_path_resolves_to_an_existing_bundled_asset():
     """Regression for 'no window icon': the .ico referenced by
-    WindowController/FlyNotes.spec must actually exist in the repo, not
+    WindowController/packaging/FlyNotes.spec must actually exist in the repo, not
     just be a path computed on faith."""
     assert ICON_PATH.exists()
     assert ICON_PATH.suffix == ".ico"
