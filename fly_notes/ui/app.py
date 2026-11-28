@@ -111,7 +111,11 @@ class FlyNotesApp:
 
         self._build_ui()
         self._bind_events()
-        self.window_ctrl.setup_resize_handles(self._cfg.colors.content_bg)
+        self.window_ctrl.setup_resize_handles(
+            self._cfg.colors.content_bg,
+            header_color=self._cfg.colors.header_bg,
+            header_height=self._cfg.settings.header_height,
+        )
         # The list's canvas starts at default_width; match the restored width.
         self._on_window_resize(self._initial_geometry.width)
         self._load_initial_tasks()
