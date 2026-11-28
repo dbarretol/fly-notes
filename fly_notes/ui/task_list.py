@@ -283,8 +283,8 @@ class TaskListView(tk.Frame):
 
         Deliberately not routed through _make_section_label: this is a
         meta hint, not a structural section separator, so it keeps the
-        plain footer-sized link styling rather than the bold uppercase
-        header treatment.
+        plain footer-sized link styling rather than the semibold
+        section-header treatment.
         """
         link = tk.Label(
             self._inner,

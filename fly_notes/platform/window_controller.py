@@ -119,7 +119,7 @@ class WindowController:
 
     Usage::
 
-        ctrl = WindowController(root, on_resize_callback=my_callback)  # my_callback(new_width: int)
+        ctrl = WindowController(root, cfg, on_resize_callback=my_callback)  # my_callback(new_width: int)
         ctrl.bind_drag(header_widget)
         ctrl.setup_resize_handles(bg_color)
     """
