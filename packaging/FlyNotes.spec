@@ -1,15 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build with: uv run pyinstaller FlyNotes.spec --clean   →   dist/FlyNotes.exe
+# Build with: uv run pyinstaller packaging/FlyNotes.spec --clean   →   dist/FlyNotes.exe
+
+from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
 
+# Paths are relative to the project root, not to the directory PyInstaller is run from.
+ROOT = Path(SPECPATH).resolve().parent.parent
+ICON = ROOT / 'assets' / 'fly_notes.ico'
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [str(ROOT / 'main.py')],
+    pathex=[str(ROOT)],
     binaries=[],
     # Package metadata is bundled so fly_notes.__version__ works in the .exe.
-    datas=[('assets/fly_notes.ico', 'assets')] + copy_metadata('fly-notes'),
+    datas=[(str(ICON), 'assets')] + copy_metadata('fly-notes'),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -39,5 +44,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/fly_notes.ico',
+    icon=str(ICON),
 )

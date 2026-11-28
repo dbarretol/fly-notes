@@ -19,5 +19,5 @@ def test_console_script_points_at_package_main():
 
 
 def test_build_spec_and_license_are_present():
-    assert (ROOT / "FlyNotes.spec").is_file()
+    assert (ROOT / "packaging" / "FlyNotes.spec").is_file()
     assert (ROOT / "LICENSE").read_text(encoding="utf-8").startswith("MIT License")
