@@ -38,3 +38,36 @@ def test_compute_reorder_target_stops_at_group_boundary(cfg):
         enforce_group_boundary=True,
     )
     assert target is None
+
+
+def test_unknown_dragging_id_has_no_target(cfg):
+    threshold = cfg.settings.drag_threshold
+    assert compute_reorder_target(["A", "B"], [False, False], "missing", -50, threshold) is None
+
+
+def test_movement_below_the_threshold_has_no_target(cfg):
+    ids, done = ["A", "B", "C"], [False, False, False]
+    threshold = cfg.settings.drag_threshold
+    assert compute_reorder_target(ids, done, "B", 0, threshold) is None
+    assert compute_reorder_target(ids, done, "B", threshold, threshold) is None
+    assert compute_reorder_target(ids, done, "B", -threshold, threshold) is None
+
+
+def test_edges_have_no_target_in_their_direction(cfg):
+    ids, done = ["A", "B", "C"], [False, False, False]
+    threshold = cfg.settings.drag_threshold
+    assert compute_reorder_target(ids, done, "A", -(threshold + 1), threshold) is None
+    assert compute_reorder_target(ids, done, "C", threshold + 1, threshold) is None
+
+
+def test_downward_drag_targets_the_next_visible_item(cfg):
+    ids, done = ["A", "C", "D"], [False, False, False]
+    threshold = cfg.settings.drag_threshold
+    assert compute_reorder_target(ids, done, "C", threshold + 1, threshold) == "D"
+
+
+def test_group_boundary_can_be_disabled(cfg):
+    ids, done = ["A", "B"], [False, True]
+    threshold = cfg.settings.drag_threshold
+    assert compute_reorder_target(ids, done, "A", threshold + 1, threshold) is None
+    assert compute_reorder_target(ids, done, "A", threshold + 1, threshold, False) == "B"
