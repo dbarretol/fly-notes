@@ -399,3 +399,22 @@ def test_fonts_without_a_fallback_are_kept(cfg):
         cfg, fonts=dataclasses.replace(cfg.fonts, body=("Comic Sans MS", 12))
     )
     assert custom.with_available_fonts(set()).fonts.body == ("Comic Sans MS", 12)
+
+
+
+def test_load_config_rejects_eight_digit_color_outside_shadow(tmp_path, caplog):
+    config_file = _write(
+        tmp_path / "config.json", {"colors": {"content_bg": "#FFF8C580"}}
+    )
+    with caplog.at_level(logging.WARNING, logger="fly_notes.config"):
+        cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.colors.content_bg == DEFAULT_CONFIG["colors"]["content_bg"]
+    assert "colors.content_bg" in caplog.text
+
+
+def test_shadow_color_keeps_its_eight_digit_alpha(tmp_path):
+    config_file = _write(
+        tmp_path / "config.json", {"colors": {"shadow_color": "#00000080"}}
+    )
+    cfg = load_config(config_file, _paths(tmp_path))
+    assert cfg.colors.shadow_color == "#00000080"
